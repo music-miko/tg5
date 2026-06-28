@@ -3,9 +3,11 @@ package vc
 import (
 	"ashokshau/tgmusic/src/core/cache"
 	"ashokshau/tgmusic/src/core/db"
+	"ashokshau/tgmusic/src/utils"
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	td "github.com/AshokShau/gotdbot"
@@ -110,6 +112,18 @@ func (c *TelegramCalls) playMedia(bot *td.Client, chatID int64, filePath string,
 	}
 
 	logger.Debug("Playing media in chat", "id", chatID, "path", filePath, "index", index)
+
+	if info, statErr := os.Stat(filePath); statErr == nil {
+		probedDuration := utils.GetMediaDuration(filePath)
+		logger.Info("Pre-play file check",
+			"chatID", chatID,
+			"path", filePath,
+			"size_bytes", info.Size(),
+			"probed_duration_sec", probedDuration,
+		)
+	} else {
+		logger.Warn("Pre-play file check: could not stat file", "chatID", chatID, "path", filePath, "error", statErr)
+	}
 
 	mediaDesc := getMediaDescription(filePath, video, ffmpegParameters)
 	if err := call.Play(context.Background(), chatID, mediaDesc); err != nil {

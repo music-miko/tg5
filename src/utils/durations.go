@@ -53,7 +53,7 @@ type ffprobeOutput struct {
 
 // GetMediaDuration returns duration in seconds (int).
 func GetMediaDuration(input string) int {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
 	args := []string{

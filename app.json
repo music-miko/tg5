@@ -88,29 +88,25 @@
       "required": false
     },
     "API_URL": {
-      "description": "API URL for external services (Spotify, Apple Music, SoundCloud, Deezer, etc.).",
-      "required": false,
-      "value": "https://api.onegrab.fun"
-    },
-    "API_KEY": {
-      "description": "API key for external services.",
-      "required": false
-    },
-    "ARC_API_URL": {
-      "description": "ArcMusic API URL, used for YouTube downloads.",
+      "description": "ArcMusic API URL — used for YouTube downloads only.",
       "required": false,
       "value": "https://api.arcmusic.fun"
     },
-    "ARC_API_KEY": {
-      "description": "ArcMusic API key, used for YouTube downloads.",
+    "API_KEY": {
+      "description": "ArcMusic API key for YouTube downloads. Get yours from the Team Arc support chat.",
       "required": false
     },
-    "DB_URI": {
-      "description": "MongoDB URI for the ArcMusic shared media cache (direct DB downloading). Leave empty to disable.",
+    "API_URL2": {
+      "description": "Fallen/onegrab API URL — used for Spotify, Apple Music, Deezer, SoundCloud and all other non-YouTube platforms.",
+      "required": false,
+      "value": "https://api.onegrab.fun"
+    },
+    "API_KEY2": {
+      "description": "API key for the Fallen/onegrab API (non-YouTube platforms).",
       "required": false
     },
     "MEDIA_CHANNEL_ID": {
-      "description": "Telegram channel ID used by the ArcMusic media cache for direct DB downloading. Leave empty to disable.",
+      "description": "Telegram channel ID used as a media file cache (arcapi.medias). Pre-uploaded files are fetched from here before hitting the API.",
       "required": false
     },
     "DEFAULT_SERVICE": {

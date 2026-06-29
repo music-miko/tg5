@@ -85,15 +85,10 @@ func main() {
 		if err != nil {
 			slog.Error("manager.RegisterClient (DL) error", "error", err)
 			dl.DlBot = client
-			dl.DlBotDbDir = tdDir // fallback: main bot's dir
 		} else {
 			dl.DlBot = dlClient
-			dl.DlBotDbDir = dlClientConfig.DatabaseDirectory // "database_dl"
 			dlClient.Logger.Info("Download bot registered successfully")
 		}
-	} else {
-		// No separate dl bot — main bot handles channel downloads
-		dl.DlBotDbDir = tdDir // "database"
 	}
 
 	err = src.Init(client)

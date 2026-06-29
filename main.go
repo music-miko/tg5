@@ -73,6 +73,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Always set MainBot so the DB channel cache can fall back to it when DlBot is not configured.
+	dl.MainBot = client
+
 	if config.DlBotToken != "" {
 		dlClientConfig := gotdbot.DefaultClientConfig()
 		dlClientConfig.AutoRetry = &gotdbot.AutoRetry{

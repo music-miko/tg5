@@ -167,7 +167,7 @@ func (c *arcCache) getTrack(videoID string, video bool) (string, error) {
 		return "", errors.New("arc cache: no bot client available to download from channel")
 	}
 
-	msg, err := bot.GetMessage(config.MediaChannelID, int(msgID))
+	msg, err := bot.GetMessage(config.MediaChannelID, msgID)
 	if err != nil {
 		return "", fmt.Errorf("arc cache: GetMessage failed: %w", err)
 	}

@@ -182,13 +182,24 @@ func writeToFile(filename string, data io.Reader) error {
 	return nil
 }
 
-// downloadFile downloads a file from a URL and saves it to a local path.
+// downloadFile downloads a file from a URL and saves it to a local path,
+// using the default downloadTimeout. Used by all platforms going through the
+// generic API_URL gateway (api.go) — left untouched so only ArcMusic's
+// timeout behavior changes.
 func downloadFile(urlStr, fileName string, overwrite bool) (string, error) {
+	return downloadFileWithTimeout(urlStr, fileName, overwrite, downloadTimeout)
+}
+
+// downloadFileWithTimeout downloads a file from a URL and saves it to a local
+// path, using a caller-supplied timeout instead of the package default. This
+// lets callers such as ArcMusic (large YouTube CDN files) use a longer hard
+// timeout without affecting the generic apiData download path.
+func downloadFileWithTimeout(urlStr, fileName string, overwrite bool, timeout time.Duration) (string, error) {
 	if urlStr == "" {
 		return "", errors.New("an empty URL was provided")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), downloadTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)

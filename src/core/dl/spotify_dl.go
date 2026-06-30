@@ -14,6 +14,7 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/sha1"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -37,11 +38,38 @@ var (
 	errInvalidAESIV  = errors.New("invalid AES IV")
 )
 
+// uniqueSpotifyTrackID returns a filesystem-safe identifier for a Spotify
+// track's local cache filename. track.Id is normally used, but some API
+// gateways don't populate "id" on /api/track responses for Spotify — when
+// that happens every track in a playlist collapses to the same filename
+// (e.g. "<dir>/.ogg"), and the existence check above causes every track
+// after the first to silently reuse the first track's cached file instead
+// of downloading its own. This is exactly why Spotify playlists were stuck
+// replaying the first song instead of advancing. Falling back to a hash of
+// the track's URL (or CDN URL) guarantees a unique, stable filename per
+// track even when Id is missing.
+func uniqueSpotifyTrackID(track utils.TrackInfo) string {
+	if id := filepath.Base(track.Id); id != "" && id != "." && id != string(filepath.Separator) {
+		return id
+	}
+
+	seed := track.URL
+	if seed == "" {
+		seed = track.CdnURL
+	}
+	if seed == "" {
+		seed = track.Platform + track.Key
+	}
+
+	sum := sha1.Sum([]byte(seed))
+	return hex.EncodeToString(sum[:])[:16]
+}
+
 // processSpotify manages the download and decryption of Spotify tracks.
 func (d *download) processSpotify() (string, error) {
 	track := d.Track
 	downloadsDir := config.DownloadsDir
-	sanitizedTrackID := filepath.Base(track.Id)
+	sanitizedTrackID := uniqueSpotifyTrackID(track)
 
 	outputFile := filepath.Join(downloadsDir, fmt.Sprintf("%s.ogg", sanitizedTrackID))
 	if _, err := os.Stat(outputFile); err == nil {
@@ -186,7 +214,7 @@ func fixOGG(inputFile string, track utils.TrackInfo) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	sanitizedTrackID := filepath.Base(track.Id)
+	sanitizedTrackID := uniqueSpotifyTrackID(track)
 	outputFile := filepath.Join(config.DownloadsDir, fmt.Sprintf("%s.ogg", sanitizedTrackID))
 	cmd := exec.CommandContext(ctx, "ffmpeg", "-i", inputFile, "-c", "copy", outputFile)
 	if output, err := cmd.CombinedOutput(); err != nil {

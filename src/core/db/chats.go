@@ -126,10 +126,12 @@ func (db *Database) SetPlayMode(chatID int64, adminPlay bool) error {
 }
 
 // GetAdminMode retrieves the admin mode for a chat.
+// Defaults to utils.Admins so that sensitive commands (skip, stop, pause, etc.)
+// are restricted to chat admins unless a chat explicitly opts into "everyone".
 func (db *Database) GetAdminMode(chatID int64) string {
 	chat, _ := db.getChat(chatID)
 	if chat == nil || chat.AdminMode == "" {
-		return utils.Everyone
+		return utils.Admins
 	}
 	return chat.AdminMode
 }

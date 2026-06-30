@@ -40,6 +40,14 @@ const (
 	arcPollInterval   = 3 * time.Second // matches _api.py's get_url: await asyncio.sleep(3)
 	arcDownloadCycles = 2               // matches _api.py's download(): for attempt in range(2)
 	arcCycleDelay     = 2 * time.Second // matches _api.py's download(): await asyncio.sleep(2) on attempt == 0
+
+	// arcFileDownloadTimeout is a hard timeout applied only to the final CDN
+	// file-save step of the ArcMusic (YouTube) job pipeline. The shared
+	// downloadTimeout (40s) used by the generic API_URL platforms is too
+	// short for big YouTube tracks/videos, which was causing ArcMusic
+	// downloads to fail mid-stream. Mirrors tosu4-master's DOWNLOAD_TIMEOUT
+	// pattern of using a longer hard timeout for large CDN downloads.
+	arcFileDownloadTimeout = 90 * time.Second
 )
 
 // newArcMusic creates a new ArcMusic API client using the configured ARC_API_URL / ARC_API_KEY.
@@ -311,7 +319,7 @@ func (a *arcMusic) resolve(videoID string, isVideo bool) (string, error) {
 			fileName = strings.TrimSuffix(fileName, filepath.Ext(fileName)) + ext
 		}
 
-		filePath, err := downloadFile(publicURL, fileName, false)
+		filePath, err := downloadFileWithTimeout(publicURL, fileName, false, arcFileDownloadTimeout)
 		if err != nil {
 			lastErr = fmt.Errorf("save file: %w", err)
 			slog.Warn("ArcMusic save_file failed", "video_id", videoID, "url", publicURL, "cycle", cycle+1, "error", err)

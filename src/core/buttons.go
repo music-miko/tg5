@@ -43,8 +43,6 @@ var OwnerBtn = cb("Owner", "help_owner")
 var DevsBtn = cb("Devs", "help_devs")
 var PlaylistBtn = cb("Playlist", "help_playlist")
 
-var SourceCodeBtn = url("Source Code", "https://github.com/AshokShau/TgMusicBot")
-
 func SupportKeyboard() *gotdbot.ReplyMarkupInlineKeyboard {
 
 	channelBtn := url("Updates", config.SupportChannel)
@@ -127,7 +125,7 @@ func BackHelpMenuKeyboard() *gotdbot.ReplyMarkupInlineKeyboard {
 	return &gotdbot.ReplyMarkupInlineKeyboard{
 		Rows: [][]gotdbot.InlineKeyboardButton{
 			{HelpBtn, HomeBtn},
-			{CloseBtn, SourceCodeBtn},
+			{CloseBtn},
 		},
 	}
 }
@@ -207,7 +205,6 @@ func AddMeMarkup(username string) *gotdbot.ReplyMarkupInlineKeyboard {
 			{addMeBtn},
 			{HelpBtn},
 			{channelBtn, groupBtn},
-			{SourceCodeBtn},
 		},
 	}
 }

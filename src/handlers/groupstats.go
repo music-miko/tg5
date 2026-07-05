@@ -18,15 +18,16 @@ import (
 	td "github.com/AshokShau/gotdbot"
 )
 
-// gsRow renders one <tr> of the group-stats table.
-func gsRow(label string, count int64) string {
-	return fmt.Sprintf("<tr><td align=\"left\">%s</td><td align=\"right\">%d</td></tr>", label, count)
+// gsRow builds one row of the group-stats table.
+func gsRow(label string, count int64) []string {
+	return []string{label, fmt.Sprintf("%d", count)}
 }
 
 // groupStatsHandler handles the /gs command: a developer-facing breakdown
 // of how many groups the bot has been added to today, this week, this
-// month, this year, and in total, rendered as a real HTML table
-// (see https://core.telegram.org/bots/api#rich-html-style).
+// month, this year, and in total, rendered as a monospaced table (there is
+// no real <table> tag in Telegram's HTML style, see
+// https://core.telegram.org/bots/api#formatting-options).
 func groupStatsHandler(c *td.Client, m *td.Message) error {
 	if !isDev(c, m) {
 		return td.EndGroups
@@ -41,14 +42,17 @@ func groupStatsHandler(c *td.Client, m *td.Message) error {
 	var sb strings.Builder
 	sb.WriteString("<b>📊 Group Join Stats</b>\n\n")
 
-	sb.WriteString("<table bordered striped>")
-	sb.WriteString("<tr><th>Period</th><th>Groups</th></tr>")
-	sb.WriteString(gsRow("Today", stats.Today))
-	sb.WriteString(gsRow("Last 7 days", stats.Last7Days))
-	sb.WriteString(gsRow("Last 30 days", stats.Last30Days))
-	sb.WriteString(gsRow("Last year", stats.LastYear))
-	sb.WriteString(gsRow("Total", stats.Total))
-	sb.WriteString("</table>")
+	sb.WriteString(renderTable(
+		[]string{"Period", "Groups"},
+		[]tableAlign{AlignLeft, AlignRight},
+		[][]string{
+			gsRow("Today", stats.Today),
+			gsRow("Last 7 days", stats.Last7Days),
+			gsRow("Last 30 days", stats.Last30Days),
+			gsRow("Last year", stats.LastYear),
+			gsRow("Total", stats.Total),
+		},
+	))
 
 	if stats.GroupsBeforeTracking > 0 {
 		sb.WriteString(fmt.Sprintf(

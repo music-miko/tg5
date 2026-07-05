@@ -72,22 +72,25 @@ func queueHandler(c *td.Client, m *td.Message) error {
 
 	if len(queue) > 1 {
 		b.WriteString(fmt.Sprintf("\n<b>Next Up (%d):</b>\n", len(queue)-1))
-		b.WriteString("<table striped>")
-		b.WriteString("<tr><th>#</th><th>Title</th><th>By</th><th>Duration</th></tr>")
 
+		var rows [][]string
 		for i, song := range queue[1:] {
 			if i >= 14 {
 				break
 			}
-			b.WriteString(fmt.Sprintf(
-				"<tr><td align=\"right\">%d</td><td align=\"left\">%s</td><td align=\"left\">%s</td><td align=\"right\">%s</td></tr>",
-				i+1,
-				html.EscapeString(truncate(song.Name, 35)),
-				html.EscapeString(truncate(song.User, 20)),
+			rows = append(rows, []string{
+				fmt.Sprintf("%d", i+1),
+				truncate(song.Name, 35),
+				truncate(song.User, 20),
 				utils.SecToMin(song.Duration),
-			))
+			})
 		}
-		b.WriteString("</table>\n")
+		b.WriteString(renderTable(
+			[]string{"#", "Title", "By", "Duration"},
+			[]tableAlign{AlignRight, AlignLeft, AlignLeft, AlignRight},
+			rows,
+		))
+		b.WriteString("\n")
 
 		if len(queue) > 15 {
 			b.WriteString(fmt.Sprintf("<i>...and %d more tracks</i>\n", len(queue)-15))

@@ -18,21 +18,27 @@ import (
 	td "github.com/AshokShau/gotdbot"
 )
 
-// detailsBlock renders a collapsed-by-default <details>/<summary> section.
+// detailsBlock renders a collapsed-by-default section. Telegram's HTML
+// style has no <details>/<summary> tag, so this uses <blockquote
+// expandable> instead - it's the real Bot API equivalent of a disclosure
+// widget (see https://core.telegram.org/bots/api#formatting-options).
 func detailsBlock(summary, body string) string {
-	return fmt.Sprintf("<details><summary>%s</summary>\n%s</details>", summary, body)
+	return renderExpandable(summary, body)
 }
 
-// cmdTable renders a Command | Description table from pairs of
+// cmdTable renders a Command / Description list from pairs of
 // {command, description}. Descriptions are already trusted, static text.
+// A fixed-width table doesn't read well for long descriptions, so this is
+// a plain bulleted list rather than a real <table> (which Telegram's HTML
+// style doesn't support anyway).
 func cmdTable(rows ...[2]string) string {
 	var sb strings.Builder
-	sb.WriteString("<table striped>")
-	sb.WriteString("<tr><th>Command</th><th>Description</th></tr>")
-	for _, r := range rows {
-		sb.WriteString(fmt.Sprintf("<tr><td align=\"left\"><code>%s</code></td><td align=\"left\">%s</td></tr>", r[0], r[1]))
+	for i, r := range rows {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(fmt.Sprintf("• <code>%s</code> — %s", r[0], r[1]))
 	}
-	sb.WriteString("</table>")
 	return sb.String()
 }
 

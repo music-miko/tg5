@@ -191,32 +191,39 @@ func statsHandler(c *td.Client, m *td.Message) error {
 		memValue = fmt.Sprintf("%s / %s", stats.AppMemUsed, stats.MemLimit)
 	}
 
-	row := func(label, value string) string {
-		return fmt.Sprintf("<tr><td align=\"left\">%s</td><td align=\"right\">%s</td></tr>", label, value)
-	}
+	// Telegram's HTML style has no real <table> tag, so each section below
+	// is rendered as a monospaced <pre> block via renderKV instead of the
+	// tr/td markup this used to build (which TDLib rejected outright).
+	systemTable := renderKV([][2]string{
+		{"CPU usage", fmt.Sprintf("%s (%d cores)", stats.SystemCPU, stats.CPUCores)},
+		{"Ram usage", fmt.Sprintf("%s / %s", stats.SystemMemUsed, stats.SystemMemTotal)},
+		{"Storage", fmt.Sprintf("%s / %s", stats.DiskUsed, stats.DiskTotal)},
+	})
+
+	appTable := renderKV([][2]string{
+		{"Uptime", stats.Uptime},
+		{"Goroutines", fmt.Sprintf("%d", stats.Goroutines)},
+		{"Go Version", stats.GoVersion},
+		{"CPU usage", stats.AppCPU},
+		{memLabel, memValue},
+		{"Heap / GC", fmt.Sprintf("%s / %d runs (%s)", stats.AppHeap, stats.GCCount, stats.GCPause)},
+	})
+
+	dbTable := renderKV([][2]string{
+		{"Chats", fmt.Sprintf("%d", len(chats))},
+		{"Users", fmt.Sprintf("%d", len(users))},
+	})
 
 	text := fmt.Sprintf(
 		"<b>%s — Runtime Status</b>\n<b>Version:</b> %s\n\n"+
-			"<b>System</b>\n<table bordered striped>%s%s%s</table>\n\n"+
-			"<b>Application</b>\n<table bordered striped>%s%s%s%s%s%s</table>\n\n"+
-			"<b>Database</b>\n<table bordered striped>%s%s</table>",
-
+			"<b>System</b>\n%s\n\n"+
+			"<b>Application</b>\n%s\n\n"+
+			"<b>Database</b>\n%s",
 		c.Me.FirstName,
 		config.Version,
-
-		row("CPU usage", fmt.Sprintf("%s (%d cores)", stats.SystemCPU, stats.CPUCores)),
-		row("Ram usage", fmt.Sprintf("%s / %s", stats.SystemMemUsed, stats.SystemMemTotal)),
-		row("Storage", fmt.Sprintf("%s / %s", stats.DiskUsed, stats.DiskTotal)),
-
-		row("Uptime", stats.Uptime),
-		row("Goroutines", fmt.Sprintf("%d", stats.Goroutines)),
-		row("Go Version", stats.GoVersion),
-		row("CPU usage", stats.AppCPU),
-		row(memLabel, memValue),
-		row("Heap / GC", fmt.Sprintf("%s / %d runs (%s)", stats.AppHeap, stats.GCCount, stats.GCPause)),
-
-		row("Chats", fmt.Sprintf("%d", len(chats))),
-		row("Users", fmt.Sprintf("%d", len(users))),
+		systemTable,
+		appTable,
+		dbTable,
 	)
 
 	_, _ = sysMsg.EditText(c, text, &td.EditTextMessageOpts{ParseMode: "HTML"})

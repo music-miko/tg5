@@ -159,15 +159,16 @@ func plural(n int, unit string) string {
 }
 
 // getFormattedDuration returns a human-readable string for the given duration.
-// tgTime renders a Telegram rich-HTML <tg-time> tag for t, which modern
-// clients render as a live timestamp localized to the viewer's own
-// timezone. The visible text is a plain fallback for clients/contexts that
-// don't support the tag. Returns "never" for a zero time.
+// tgTime renders a human-readable, HTML-escaped timestamp for t. There is
+// no <tg-time> tag in Telegram's Bot API HTML style (that was a fictional
+// tag - see https://core.telegram.org/bots/api#formatting-options for the
+// real, supported list), so this just formats plain text. Returns "never"
+// for a zero time.
 func tgTime(t time.Time) string {
 	if t.IsZero() {
 		return "never"
 	}
-	return fmt.Sprintf("<tg-time unix=\"%d\">%s</tg-time>", t.Unix(), html.EscapeString(t.Format("Jan 2, 15:04 MST")))
+	return html.EscapeString(t.Format("Jan 2, 15:04 MST"))
 }
 
 func getFormattedDuration(diff time.Duration) string {

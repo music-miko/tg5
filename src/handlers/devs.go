@@ -138,9 +138,7 @@ func asHandler(c *td.Client, m *td.Message) error {
 	var sb strings.Builder
 	sb.WriteString("<b>🤝 Assistant Invite Results</b>\n\n")
 
-	sb.WriteString("<table bordered striped>")
-	sb.WriteString("<tr><th>Client</th><th>Assistant</th><th>Status</th></tr>")
-
+	var tableRows [][]string
 	var joined, failed int
 	var failLines []string
 	for _, r := range results {
@@ -149,10 +147,10 @@ func asHandler(c *td.Client, m *td.Message) error {
 			name = "@" + r.Username
 		}
 
-		status := "✅ OK"
+		status := "OK"
 		if !r.Success() {
 			failed++
-			status = "❌ FAILED"
+			status = "FAILED"
 			failLines = append(failLines, fmt.Sprintf(
 				"client%d (%s): %s", r.Index, html.EscapeString(name), html.EscapeString(truncate(r.Err.Error(), 150)),
 			))
@@ -160,17 +158,19 @@ func asHandler(c *td.Client, m *td.Message) error {
 			joined++
 		}
 
-		sb.WriteString(fmt.Sprintf(
-			"<tr><td align=\"left\">client%d</td><td align=\"left\">%s</td><td align=\"left\">%s</td></tr>",
-			r.Index, html.EscapeString(name), status,
-		))
+		tableRows = append(tableRows, []string{
+			fmt.Sprintf("client%d", r.Index), name, status,
+		})
 	}
 
-	sb.WriteString(fmt.Sprintf(
-		"<tr><td align=\"left\"><b>Total</b></td><td></td><td align=\"left\"><b>%d/%d</b></td></tr>",
-		joined, joined+failed,
+	tableRows = append(tableRows, []string{"Total", "", fmt.Sprintf("%d/%d", joined, joined+failed)})
+
+	sb.WriteString(renderTable(
+		[]string{"Client", "Assistant", "Status"},
+		[]tableAlign{AlignLeft, AlignLeft, AlignLeft},
+		tableRows,
 	))
-	sb.WriteString("</table>\n")
+	sb.WriteString("\n")
 
 	if len(failLines) > 0 {
 		sb.WriteString("\n<blockquote expandable>\n")

@@ -102,12 +102,9 @@ func setupGuideText(botName string) string {
 			"Tap <b>Add to Group</b> below and select your group.\n\n"+
 			"<b>Step 2 — Promote the bot</b>\n"+
 			"Make %s an admin with these rights, so it can stream seamlessly:\n"+
-			"<table striped>"+
-			"<tr><th>Right</th><th>Why it's needed</th></tr>"+
-			"<tr><td align=\"left\">Invite Users via Link</td><td align=\"left\">Lets the bot's assistant account join your group's voice chat</td></tr>"+
-			"<tr><td align=\"left\">Delete Messages</td><td align=\"left\">Lets the bot clean up its own command/status messages</td></tr>"+
-			"<tr><td align=\"left\">Ban Users</td><td align=\"left\">Lets the bot recover its assistant automatically if it's ever muted or banned by mistake</td></tr>"+
-			"</table>\n\n"+
+			"• <b>Invite Users via Link</b> — lets the bot's assistant account join your group's voice chat\n"+
+			"• <b>Delete Messages</b> — lets the bot clean up its own command/status messages\n"+
+			"• <b>Ban Users</b> — lets the bot recover its assistant automatically if it's ever muted or banned by mistake\n\n"+
 			"<b>Step 3 — Start a voice chat</b>\n"+
 			"Open your group and start a video/voice chat.\n\n"+
 			"<b>Step 4 — Play music</b>\n"+

@@ -73,7 +73,7 @@ func queueHandler(c *td.Client, m *td.Message) error {
 
 	if len(queue) > 1 {
 		b.WriteString(fmt.Sprintf("\n<b>Next Up (%d):</b>\n", len(queue)-1))
-		b.WriteString("<table striped>")
+		b.WriteString("<table bordered striped>")
 		b.WriteString("<tr><th>#</th><th>Title</th><th>By</th><th>Duration</th></tr>")
 
 		for i, song := range queue[1:] {

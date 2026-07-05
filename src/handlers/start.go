@@ -94,37 +94,52 @@ func startHandler(c *td.Client, m *td.Message) error {
 
 // setupGuideText returns the step-by-step setup guide shown via the Setup Guide button.
 //
-// The admin-rights section used to be a <table>, but a 2-column table whose
-// second column holds a full sentence forces Telegram to squeeze or wrap
-// that column unpredictably depending on screen width, which is what made
-// the guide look "unaligned" on narrower/mobile clients. A flat bullet list
-// with a bold label wraps like normal text and always lines up cleanly, so
-// it's used for that section instead.
+// This uses the full Rich Message toolkit rather than a flat wall of text:
+// a compact "stepper" table gives the whole flow at a glance, the
+// admin-rights fine print is tucked into a collapsed <details> block so it
+// doesn't dominate the screen, a divider separates setup from usage, and a
+// second table doubles as a quick command reference. Each stepper row is
+// kept short on purpose — a 2-column table whose second column holds a
+// full sentence forces Telegram to squeeze or wrap it unpredictably on
+// narrow/mobile clients, which is also why the admin-rights list below
+// stays a bullet list instead of a table.
 func setupGuideText(botName string) string {
 	escBotName := html.EscapeString(botName)
+
+	stepper := "<table bordered striped>" +
+		"<tr><th align=\"center\">Step</th><th>Action</th></tr>" +
+		"<tr><td align=\"center\">1️⃣</td><td>Tap <b>➕ Add to Group</b> below and pick your group</td></tr>" +
+		"<tr><td align=\"center\">2️⃣</td><td>Promote the bot to admin (tap 🔐 below for the exact rights)</td></tr>" +
+		"<tr><td align=\"center\">3️⃣</td><td>Start a voice/video chat in that group</td></tr>" +
+		"<tr><td align=\"center\">4️⃣</td><td>Run <code>/play song name</code> and enjoy 🎶</td></tr>" +
+		"</table>"
+
+	adminRights := detailsBlock("🔐 Required admin rights", ""+
+		"• <b>Invite Users via Link</b> — lets the bot's assistant account join your group's voice chat\n"+
+		"• <b>Delete Messages</b> — lets the bot clean up its own command and status messages\n"+
+		"• <b>Ban Users</b> — lets the bot auto-recover its assistant if it's ever muted or banned by mistake",
+	)
+
+	commandTable := "<table bordered striped>" +
+		"<tr><th>Command</th><th>What it does</th></tr>" +
+		"<tr><td align=\"left\"><code>/play [song]</code></td><td align=\"left\">Streams audio in the voice chat</td></tr>" +
+		"<tr><td align=\"left\"><code>/vplay [song]</code></td><td align=\"left\">Streams video instead of audio</td></tr>" +
+		"</table>"
+
 	return fmt.Sprintf(
 		"%s\n"+
-			"<i>Get %s streaming in your group in under a minute — just four quick steps.</i>\n\n"+
+			"<i>Get %s streaming in your group in under a minute.</i>\n\n"+
+			"%s\n\n"+
+			"%s\n\n"+
 			"%s\n"+
-			"Tap <b>➕ Add to Group</b> below and choose the group you want music in.\n\n"+
-			"%s\n"+
-			"Promote %s to admin with these rights so it can stream without interruptions:\n\n"+
-			"• <b>Invite Users via Link</b> — lets the bot's assistant account join your group's voice chat\n"+
-			"• <b>Delete Messages</b> — lets the bot clean up its own command and status messages\n"+
-			"• <b>Ban Users</b> — lets the bot auto-recover its assistant if it's ever muted or banned by mistake\n\n"+
-			"%s\n"+
-			"Open your group and start a voice/video chat — the bot joins automatically once it's live.\n\n"+
-			"%s\n"+
-			"Use <code>/play song name</code> for audio, or <code>/vplay song name</code> to stream video.\n"+
-			"<i>Example:</i> <code>/play shape of you</code>\n\n"+
-			"<b>🎶 That's it — you're all set. Enjoy the music!</b>",
+			"%s\n\n"+
+			"<b>🎉 That's it — you're all set. Enjoy the music!</b>",
 		headingBlock(2, "🅰️ Setup Guide"),
 		escBotName,
-		headingBlock(4, "① Add the bot"),
-		headingBlock(4, "② Promote the bot"),
-		escBotName,
-		headingBlock(4, "③ Start a voice chat"),
-		headingBlock(4, "④ Play music"),
+		stepper,
+		adminRights,
+		dividerBlock(),
+		commandTable,
 	)
 }
 

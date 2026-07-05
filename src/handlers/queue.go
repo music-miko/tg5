@@ -50,7 +50,7 @@ func queueHandler(c *td.Client, m *td.Message) error {
 	playedTime, _ := vc.Calls.PlayedTime(chatID)
 
 	var b strings.Builder
-	b.WriteString(headingBlock(2, fmt.Sprintf("Queue for %s", html.EscapeString(chat.Title))))
+	b.WriteString(headingBlock(4, fmt.Sprintf("Queue for %s", html.EscapeString(chat.Title))))
 	b.WriteString("\n\n")
 
 	b.WriteString("<b>Now Playing:</b>\n")
@@ -74,14 +74,14 @@ func queueHandler(c *td.Client, m *td.Message) error {
 	if len(queue) > 1 {
 		b.WriteString(fmt.Sprintf("\n<b>Next Up (%d):</b>\n", len(queue)-1))
 		b.WriteString("<table bordered striped>")
-		b.WriteString("<tr><th align=\"center\">#</th><th>Title</th><th>By</th><th>Duration</th></tr>")
+		b.WriteString("<tr><th align=\"center\">#</th><th>Title</th><th align=\"center\">By</th><th align=\"center\">Duration</th></tr>")
 
 		for i, song := range queue[1:] {
 			if i >= 14 {
 				break
 			}
 			b.WriteString(fmt.Sprintf(
-				"<tr><td align=\"center\">%d</td><td align=\"left\">%s</td><td align=\"left\">%s</td><td align=\"right\">%s</td></tr>",
+				"<tr><td align=\"center\">%d</td><td align=\"left\">%s</td><td align=\"center\">%s</td><td align=\"center\">%s</td></tr>",
 				i+1,
 				html.EscapeString(truncate(song.Name, 35)),
 				html.EscapeString(truncate(song.User, 20)),
@@ -109,8 +109,8 @@ func queueHandler(c *td.Client, m *td.Message) error {
 			progress = utils.SecToMin(int(playedTime))
 		}
 		sb.WriteString(fmt.Sprintf(
-			"<b>Queue for %s</b>\n\n<b>Now Playing:</b>\n• <code>%s</code>\n• %s/%s min\n\n<b>Total:</b> %d tracks",
-			html.EscapeString(chat.Title),
+			"%s\n\n<b>Now Playing:</b>\n• <code>%s</code>\n• %s/%s min\n\n<b>Total:</b> %d tracks",
+			headingBlock(4, fmt.Sprintf("Queue for %s", html.EscapeString(chat.Title))),
 			html.EscapeString(truncate(current.Name, 45)),
 			progress,
 			utils.SecToMin(current.Duration),

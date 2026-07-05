@@ -28,7 +28,7 @@ func detailsBlock(summary, body string) string {
 // {command, description}. Descriptions are already trusted, static text.
 func cmdTable(rows ...[2]string) string {
 	var sb strings.Builder
-	sb.WriteString("<table striped>")
+	sb.WriteString("<table bordered striped>")
 	sb.WriteString("<tr><th>Command</th><th>Description</th></tr>")
 	for _, r := range rows {
 		sb.WriteString(fmt.Sprintf("<tr><td align=\"left\"><code>%s</code></td><td align=\"left\">%s</td></tr>", r[0], r[1]))

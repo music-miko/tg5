@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -84,13 +85,13 @@ func shellRunner(c *td.Client, m *td.Message) error {
 		}
 
 		stdout, stderr, code := runShellCommand(cmd, 300*time.Second)
-		part := fmt.Sprintf("<b>Command:</b> <code>%s</code>\n", cmd)
+		part := fmt.Sprintf("<b>Command:</b> <code>%s</code>\n", html.EscapeString(cmd))
 		if stdout != "" {
-			part += fmt.Sprintf("<b>Output:</b>\n<pre>%s</pre>\n", stdout)
+			part += fmt.Sprintf("<b>Output:</b>\n<pre>%s</pre>\n", html.EscapeString(stdout))
 		}
 
 		if stderr != "" {
-			part += fmt.Sprintf("<b>Error:</b>\n<pre>%s</pre>\n", stderr)
+			part += fmt.Sprintf("<b>Error:</b>\n<pre>%s</pre>\n", html.EscapeString(stderr))
 		}
 		part += fmt.Sprintf("<b>Exit Code:</b> <code>%d</code>\n", code)
 		outputParts = append(outputParts, part)

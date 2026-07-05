@@ -67,21 +67,33 @@ func (c *TelegramCalls) handleNoSong(bot *td.Client, chatID int64) error {
 	return nil
 }
 
-// handleFlood manages flood wait errors by pausing execution for short waits.
-// It sleeps only if the wait is <= 5 seconds. Otherwise, it returns false.
+// floodWaitMaxAutoRetry is the longest FLOOD_WAIT we sleep through automatically.
+// Telegram's short/medium floods for MTProto calls (join/leave channel, get
+// dialogs, resolve peer, etc.) are almost always well under a couple of
+// minutes, so waiting them out and letting gogram retry is far better than
+// giving up on the underlying operation immediately. Anything longer than
+// this is treated as abnormal and given up on, so a single stuck client
+// can't block other work indefinitely.
+const floodWaitMaxAutoRetry = 90 * time.Second
+
+// handleFlood manages flood wait errors by pausing execution for the wait
+// duration, up to floodWaitMaxAutoRetry. Returning true tells gogram to
+// retry the request that triggered the flood wait; returning false gives up
+// and propagates the error to the caller.
 func handleFlood(err error) bool {
 	wait := telegram.GetFloodWait(err)
 	if wait <= 0 {
 		return false
 	}
 
-	if wait > 5 {
-		logger.Warn("Flood wait too long, skipping sleep", "seconds", wait)
+	waitDuration := time.Duration(wait) * time.Second
+	if waitDuration > floodWaitMaxAutoRetry {
+		logger.Warn("Flood wait too long, giving up", "seconds", wait)
 		return false
 	}
 
 	logger.Warn("Flood wait detected, sleeping", "seconds", wait)
-	time.Sleep(time.Duration(wait+1) * time.Second)
+	time.Sleep(waitDuration + time.Second)
 	return true
 }
 

@@ -156,7 +156,15 @@ func (c *TelegramCalls) joinUb(bot *td.Client, chatID int64, call *Assistant, in
 	}
 
 	c.UpdateMembership(chatID, ub.Me().ID, &td.ChatMemberStatusMember{})
+	c.markRecentlyJoined(chatID, ub.Me().ID)
 	return nil
+}
+
+// markRecentlyJoined records that an assistant has just joined chatID, so
+// that a subsequent AutoLeave / LeaveAll sweep gives it a grace period
+// instead of leaving it again immediately.
+func (c *TelegramCalls) markRecentlyJoined(chatID, userID int64) {
+	c.recentJoinCache.Set(fmt.Sprintf("%d:%d", chatID, userID), true)
 }
 
 // resolveInviteLink returns a cached invite link or creates a new one.
@@ -196,10 +204,13 @@ func (c *TelegramCalls) handleJoinError(bot *td.Client, chatID, userID int64, in
 			slog.Warn("failed to approve join request", "error", approveErr, "index", index)
 			return fmt.Errorf("client %d: assistant (<code>%d</code>) has a pending join request: %v", index, userID, approveErr)
 		}
+		c.UpdateMembership(chatID, userID, &td.ChatMemberStatusMember{})
+		c.markRecentlyJoined(chatID, userID)
 		return nil
 
 	case strings.Contains(errMsg, "USER_ALREADY_PARTICIPANT"):
 		c.UpdateMembership(chatID, userID, &td.ChatMemberStatusMember{})
+		c.markRecentlyJoined(chatID, userID)
 		return nil
 
 	case strings.Contains(errMsg, "INVITE_HASH_EXPIRED"):
@@ -213,6 +224,22 @@ func (c *TelegramCalls) handleJoinError(bot *td.Client, chatID, userID int64, in
 		c.inviteCache.Delete(strconv.FormatInt(chatID, 10))
 		c.UpdateMembership(chatID, userID, &td.ChatMemberStatusLeft{})
 		return fmt.Errorf("client %d: assistant (<code>%d</code>) is banned from this group", index, userID)
+
+	case tg.GetFloodWait(err) > 0:
+		// This assistant is specifically flood-waited on *joining* right now.
+		// Rather than sitting out the wait (which could be long, and blocks
+		// this user's play request), tag the error with joinFloodWaitMarker
+		// so PlayMedia's classifyError rotates to a different assistant
+		// instead. This is deliberately scoped to the join step only - a
+		// flood wait elsewhere (e.g. during call.Play()) is not tagged here
+		// and won't trigger rotation.
+		wait := tg.GetFloodWait(err)
+		logger.Warn("assistant flood-waited while joining via invite link, rotating to another assistant",
+			"chat_id", chatID, "index", index, "seconds", wait)
+		return fmt.Errorf(
+			"%s: client %d: assistant (<code>%d</code>) is flood-waited for %ds while joining",
+			joinFloodWaitMarker, index, userID, wait,
+		)
 	}
 
 	logger.Warn("unhandled JoinChannel error", "error", err, "index", index)

@@ -11,8 +11,8 @@ package handlers
 import (
 	"ashokshau/tgmusic/src/utils"
 	"fmt"
+	"html"
 	"math"
-	"strconv"
 	"strings"
 
 	"ashokshau/tgmusic/src/core/cache"
@@ -50,11 +50,11 @@ func queueHandler(c *td.Client, m *td.Message) error {
 	playedTime, _ := vc.Calls.PlayedTime(chatID)
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("<b>Queue for %s</b>\n\n", chat.Title))
+	b.WriteString(fmt.Sprintf("<b>Queue for %s</b>\n\n", html.EscapeString(chat.Title)))
 
 	b.WriteString("<b>Now Playing:</b>\n")
-	b.WriteString(fmt.Sprintf("• <b>Title:</b> <code>%s</code>\n", truncate(current.Name, 45)))
-	b.WriteString(fmt.Sprintf("• <b>By:</b> %s\n", current.User))
+	b.WriteString(fmt.Sprintf("• <b>Title:</b> <code>%s</code>\n", html.EscapeString(truncate(current.Name, 45))))
+	b.WriteString(fmt.Sprintf("• <b>By:</b> %s\n", html.EscapeString(current.User)))
 	b.WriteString(fmt.Sprintf("• <b>Duration:</b> %s min\n", utils.SecToMin(current.Duration)))
 	b.WriteString("• <b>Loop:</b> ")
 	if current.Loop > 0 {
@@ -72,21 +72,25 @@ func queueHandler(c *td.Client, m *td.Message) error {
 
 	if len(queue) > 1 {
 		b.WriteString(fmt.Sprintf("\n<b>Next Up (%d):</b>\n", len(queue)-1))
+		b.WriteString("<table striped>")
+		b.WriteString("<tr><th>#</th><th>Title</th><th>By</th><th>Duration</th></tr>")
 
 		for i, song := range queue[1:] {
 			if i >= 14 {
 				break
 			}
-			b.WriteString(strconv.Itoa(i + 1))
-			b.WriteString(". <code>")
-			b.WriteString(truncate(song.Name, 45))
-			b.WriteString("</code> | ")
-			b.WriteString(utils.SecToMin(song.Duration))
-			b.WriteString(" min\n")
+			b.WriteString(fmt.Sprintf(
+				"<tr><td align=\"right\">%d</td><td align=\"left\">%s</td><td align=\"left\">%s</td><td align=\"right\">%s</td></tr>",
+				i+1,
+				html.EscapeString(truncate(song.Name, 35)),
+				html.EscapeString(truncate(song.User, 20)),
+				utils.SecToMin(song.Duration),
+			))
 		}
+		b.WriteString("</table>\n")
 
 		if len(queue) > 15 {
-			b.WriteString(fmt.Sprintf("...and %d more tracks\n", len(queue)-15))
+			b.WriteString(fmt.Sprintf("<i>...and %d more tracks</i>\n", len(queue)-15))
 		}
 	}
 
@@ -101,8 +105,8 @@ func queueHandler(c *td.Client, m *td.Message) error {
 		}
 		sb.WriteString(fmt.Sprintf(
 			"<b>Queue for %s</b>\n\n<b>Now Playing:</b>\n• <code>%s</code>\n• %s/%s min\n\n<b>Total:</b> %d tracks",
-			chat.Title,
-			truncate(current.Name, 45),
+			html.EscapeString(chat.Title),
+			html.EscapeString(truncate(current.Name, 45)),
 			progress,
 			utils.SecToMin(current.Duration),
 			len(queue),

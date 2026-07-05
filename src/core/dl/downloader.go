@@ -11,9 +11,23 @@ package dl
 import (
 	"ashokshau/tgmusic/src/utils"
 	"fmt"
+	"log/slog"
 	"os"
+	"time"
 
 	td "github.com/AshokShau/gotdbot"
+)
+
+// maxTelegramDownloadRetries / telegramDownloadRetryDelay control how many
+// times, and how far apart, we re-issue a Telegram file download after it
+// comes back incomplete (see verifyDownloadedFile - e.g. a dropped
+// connection, FLOOD_WAIT, or an expired file reference mid-transfer).
+// TDLib tracks partial downloads per file_id internally, so re-issuing the
+// same DownloadFile request resumes from the bytes already on disk instead
+// of starting over.
+const (
+	maxTelegramDownloadRetries = 3
+	telegramDownloadRetryDelay = 2 * time.Second
 )
 
 func DownloadCachedTrack(cached *utils.CachedTrack, bot *td.Client) (string, error) {
@@ -62,12 +76,9 @@ func downloadTelegramFile(cached *utils.CachedTrack, bot *td.Client) (string, er
 		return "", err
 	}
 
-	download, err := file.Download(bot, 0, 0, 1, &td.DownloadFileOpts{Synchronous: true})
-	if err != nil {
-		return "", err
-	}
-
-	return verifyDownloadedFile(download)
+	return retryTelegramDownload(func() (*td.File, error) {
+		return file.Download(bot, 0, 0, 1, &td.DownloadFileOpts{Synchronous: true})
+	})
 }
 
 func downloadFromTelegramMessage(bot *td.Client, msgURL string) (string, error) {
@@ -76,12 +87,55 @@ func downloadFromTelegramMessage(bot *td.Client, msgURL string) (string, error) 
 		return "", fmt.Errorf("get telegram message: %w", err)
 	}
 
-	file, err := msg.Download(bot, 1, 0, 0, true)
-	if err != nil {
-		return "", err
+	return retryTelegramDownload(func() (*td.File, error) {
+		return msg.Download(bot, 1, 0, 0, true)
+	})
+}
+
+// retryTelegramDownload runs downloadFn up to maxTelegramDownloadRetries
+// times, resuming rather than restarting whenever the previous attempt left
+// an incomplete file on disk (downloadFn is expected to request the same
+// file_id/message each call, so TDLib continues from where it left off).
+func retryTelegramDownload(downloadFn func() (*td.File, error)) (string, error) {
+	var lastErr error
+	for attempt := 1; attempt <= maxTelegramDownloadRetries; attempt++ {
+		file, err := downloadFn()
+		if err != nil {
+			lastErr = err
+			slog.Warn("telegram download request failed", "attempt", attempt, "max_attempts", maxTelegramDownloadRetries, "error", err)
+			if attempt < maxTelegramDownloadRetries {
+				time.Sleep(telegramDownloadRetryDelay)
+			}
+			continue
+		}
+
+		path, verr := verifyDownloadedFile(file)
+		if verr == nil {
+			return path, nil
+		}
+
+		lastErr = verr
+		var downloaded, total int64
+		if file != nil {
+			total = file.Size
+			if file.Local != nil {
+				downloaded = file.Local.DownloadedSize
+			}
+		}
+		slog.Warn(
+			"telegram download incomplete, resuming",
+			"attempt", attempt,
+			"max_attempts", maxTelegramDownloadRetries,
+			"downloaded_bytes", downloaded,
+			"total_bytes", total,
+			"error", verr,
+		)
+		if attempt < maxTelegramDownloadRetries {
+			time.Sleep(telegramDownloadRetryDelay)
+		}
 	}
 
-	return verifyDownloadedFile(file)
+	return "", fmt.Errorf("telegram download did not complete after %d attempts: %w", maxTelegramDownloadRetries, lastErr)
 }
 
 // verifyDownloadedFile checks that a Telegram file download actually finished.

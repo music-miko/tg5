@@ -121,6 +121,8 @@ func (c *TelegramCalls) playSong(bot *td.Client, chatID int64, song *utils.Cache
 		song.Duration = utils.GetMediaDuration(song.FilePath)
 	}
 
+	c.schedulePrefetch(bot, chatID, song.Duration)
+
 	text := fmt.Sprintf(
 		"<u><b>| Started streaming</b></u>\n\n<b>Title:</b> <a href='%s'>%s</a>\n\n<b>Duration:</b> %s min\n<b>Requested by:</b> %s",
 		html.EscapeString(song.URL),
@@ -150,6 +152,7 @@ func (c *TelegramCalls) Stop(chatId int64, banned bool) error {
 		return err
 	}
 
+	c.cancelPrefetch(chatId)
 	cache.ChatCache.ClearChat(chatId)
 	err = call.stopCall(chatId, banned)
 	if err != nil {

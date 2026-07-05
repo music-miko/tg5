@@ -11,6 +11,7 @@ package handlers
 import (
 	"ashokshau/tgmusic/config"
 	"fmt"
+	"html"
 	"strings"
 
 	"ashokshau/tgmusic/src/core/cache"
@@ -45,8 +46,8 @@ func activeVcHandler(c *td.Client, m *td.Message) error {
 		if currentSong != nil {
 			songInfo = fmt.Sprintf(
 				"🎶 <b>Now Playing:</b> <a href='%s'>%s</a> (%ds)",
-				currentSong.URL,
-				currentSong.Name,
+				html.EscapeString(currentSong.URL),
+				html.EscapeString(currentSong.Name),
 				currentSong.Duration,
 			)
 		} else {
@@ -108,6 +109,76 @@ func leaveAllHandler(c *td.Client, m *td.Message) error {
 	}
 
 	_, err = reply.EditText(c, fmt.Sprintf("Assistant's Left %d chats", leftCount), nil)
+	return err
+}
+
+// asHandler handles the /as command: invites every running assistant into
+// the configured logger group, and reports which ones joined vs failed.
+func asHandler(c *td.Client, m *td.Message) error {
+	if !isDev(c, m) {
+		return td.EndGroups
+	}
+
+	if config.LoggerId == 0 {
+		_, _ = m.ReplyText(c, "Please set LOGGER_ID in .env first.", nil)
+		return td.EndGroups
+	}
+
+	reply, err := m.ReplyText(c, "Inviting all assistants into the logger group...", nil)
+	if err != nil {
+		return err
+	}
+
+	results := vc.Calls.JoinAllAssistants(c, config.LoggerId)
+	if len(results) == 0 {
+		_, err = reply.EditText(c, "No assistants are currently running.", nil)
+		return err
+	}
+
+	var sb strings.Builder
+	sb.WriteString("<b>🤝 Assistant Invite Results</b>\n\n")
+
+	sb.WriteString("<table bordered striped>")
+	sb.WriteString("<tr><th>Client</th><th>Assistant</th><th>Status</th></tr>")
+
+	var joined, failed int
+	var failLines []string
+	for _, r := range results {
+		name := fmt.Sprintf("%d", r.UserID)
+		if r.Username != "" {
+			name = "@" + r.Username
+		}
+
+		status := "✅ OK"
+		if !r.Success() {
+			failed++
+			status = "❌ FAILED"
+			failLines = append(failLines, fmt.Sprintf(
+				"client%d (%s): %s", r.Index, html.EscapeString(name), html.EscapeString(truncate(r.Err.Error(), 150)),
+			))
+		} else {
+			joined++
+		}
+
+		sb.WriteString(fmt.Sprintf(
+			"<tr><td align=\"left\">client%d</td><td align=\"left\">%s</td><td align=\"left\">%s</td></tr>",
+			r.Index, html.EscapeString(name), status,
+		))
+	}
+
+	sb.WriteString(fmt.Sprintf(
+		"<tr><td align=\"left\"><b>Total</b></td><td></td><td align=\"left\"><b>%d/%d</b></td></tr>",
+		joined, joined+failed,
+	))
+	sb.WriteString("</table>\n")
+
+	if len(failLines) > 0 {
+		sb.WriteString("\n<blockquote expandable>\n")
+		sb.WriteString(strings.Join(failLines, "\n"))
+		sb.WriteString("\n</blockquote>")
+	}
+
+	_, err = reply.EditText(c, sb.String(), &td.EditTextMessageOpts{ParseMode: "HTML"})
 	return err
 }
 

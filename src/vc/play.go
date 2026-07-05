@@ -11,6 +11,13 @@ import (
 	td "github.com/AshokShau/gotdbot"
 )
 
+// joinFloodWaitMarker tags errors from handleJoinError's flood-wait case so
+// classifyError can rotate to a different assistant specifically for a
+// flood wait hit while joining a chat's invite link - not for flood waits
+// encountered anywhere else (e.g. during call.Play()), which are left to
+// their existing handling instead of triggering assistant rotation.
+const joinFloodWaitMarker = "ASSISTANT_JOIN_FLOOD_WAIT"
+
 // errorKind classifies a Telegram group call error for retry strategy.
 type errorKind int
 
@@ -33,7 +40,7 @@ func classifyError(err error) errorKind {
 		return errRetryOnce
 	case strings.Contains(msg, "CHANNELS_TOO_MUCH"),
 		strings.Contains(msg, "FROZEN_METHOD_INVALID"),
-		strings.Contains(msg, "FLOOD_WAIT_X"):
+		strings.Contains(msg, joinFloodWaitMarker):
 		return errRotate
 	default:
 		return errUnknown
@@ -95,6 +102,18 @@ func (c *TelegramCalls) PlayMedia(bot *td.Client, chatID int64, filePath string,
 func (c *TelegramCalls) evictAssistant(chatID int64, index int, err error) {
 	_ = db.Instance.RemoveAssistant(chatID)
 	if strings.Contains(err.Error(), "CHANNELS_TOO_MUCH") {
+		// Protect the very chat that triggered this eviction: it's usually
+		// either brand new (assistant just joined it for this play attempt)
+		// or otherwise not yet marked active because the queue was already
+		// cleared above. Without this, the LeaveAllForClient sweep below
+		// would immediately kick the assistant back out of it, producing a
+		// visible "join then leave instantly" pattern for that group.
+		c.mu.RLock()
+		call, ok := c.assistants[index]
+		c.mu.RUnlock()
+		if ok {
+			c.markRecentlyJoined(chatID, call.App.Me().ID)
+		}
 		go func() { _, _ = c.LeaveAllForClient(index) }()
 	}
 }

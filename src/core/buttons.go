@@ -242,10 +242,13 @@ func GroupWelcomeMarkup() *gotdbot.ReplyMarkupInlineKeyboard {
 	}
 }
 
-// GuideBackMarkup is shown on the setup guide screen, with Back and Close.
-func GuideBackMarkup() *gotdbot.ReplyMarkupInlineKeyboard {
+// GuideBackMarkup is shown on the setup guide screen: Add to Group (which
+// the guide text explicitly tells the user to tap), then Back and Close.
+func GuideBackMarkup(username string) *gotdbot.ReplyMarkupInlineKeyboard {
+	addToGroupBtn := url("Add to Group", fmt.Sprintf("https://t.me/%s?startgroup=true", username))
 	return &gotdbot.ReplyMarkupInlineKeyboard{
 		Rows: [][]gotdbot.InlineKeyboardButton{
+			{addToGroupBtn},
 			{StartBackBtn, CloseBtn},
 		},
 	}

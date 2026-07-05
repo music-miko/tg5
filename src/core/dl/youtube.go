@@ -107,7 +107,9 @@ func (y *youTubeData) getInfo() (utils.PlatformTracks, error) {
 
 		// InnerTube exhausted — try ArcMusic search with limit 1
 		slog.Warn("InnerTube exhausted for video ID, falling back to ArcMusic search", "video_id", videoID)
-		if arcTracks, arcErr := newArcMusic().search(fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID), 1); arcErr == nil && len(arcTracks) > 0 {
+		arcTracks, arcErr := newArcMusic().search(fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID), 1)
+		recordArcSearch(arcErr != nil || len(arcTracks) == 0)
+		if arcErr == nil && len(arcTracks) > 0 {
 			return utils.PlatformTracks{Results: arcTracks}, nil
 		}
 
@@ -126,6 +128,7 @@ func (y *youTubeData) search() (utils.PlatformTracks, error) {
 
 	slog.Warn("searchYouTube failed, falling back to ArcMusic search", "query", y.Query, "error", err)
 	arcTracks, arcErr := newArcMusic().search(y.Query, 3)
+	recordArcSearch(arcErr != nil || len(arcTracks) == 0)
 	if arcErr != nil {
 		if err != nil {
 			return utils.PlatformTracks{}, fmt.Errorf("innertube: %w; arcmusic: %v", err, arcErr)
@@ -176,6 +179,7 @@ func (y *youTubeData) downloadTrack(info utils.TrackInfo, video bool) (string, e
 		return filePath, nil
 	}
 	slog.Warn("ArcMusic download failed, falling back to yt-dlp", "video_id", info.Id, "error", err)
+	recordArcFallback()
 
 	return y.downloadWithYtDlp(info.Id, video)
 }

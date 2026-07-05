@@ -280,14 +280,20 @@ func (a *arcMusic) search(query string, limit int) ([]utils.MusicTrack, error) {
 // API.download(): up to arcDownloadCycles attempts, sleeping arcCycleDelay
 // between attempts only after a non-final cycle fails.
 func (a *arcMusic) resolve(videoID string, isVideo bool) (string, error) {
+	recordArcAttempt(isVideo)
+
 	if link, ok := lookupDirectDb(videoID, isVideo); ok {
+		recordArcSuccess(isVideo, true, 0)
 		return link, nil
 	}
 
 	if !a.isConfigured() {
-		return "", errors.New("ArcMusic API is not configured")
+		err := errors.New("ArcMusic API is not configured")
+		recordArcFailure(isVideo, err)
+		return "", err
 	}
 
+	start := time.Now()
 	var lastErr error
 	for cycle := 0; cycle < arcDownloadCycles; cycle++ {
 		jobID, err := a.createJob(videoID, isVideo)
@@ -329,11 +335,13 @@ func (a *arcMusic) resolve(videoID string, isVideo bool) (string, error) {
 			continue
 		}
 
+		recordArcSuccess(isVideo, false, time.Since(start))
 		return filePath, nil
 	}
 
 	if lastErr == nil {
 		lastErr = errors.New("ArcMusic download failed after all cycles")
 	}
+	recordArcFailure(isVideo, lastErr)
 	return "", lastErr
 }

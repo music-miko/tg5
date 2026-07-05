@@ -10,6 +10,7 @@ package handlers
 
 import (
 	"fmt"
+	"html"
 	"strconv"
 
 	"ashokshau/tgmusic/src/core/cache"
@@ -54,6 +55,6 @@ func removeHandler(c *td.Client, m *td.Message) error {
 	}
 
 	cache.ChatCache.RemoveTrack(chatID, trackNum)
-	_, err = m.ReplyText(c, fmt.Sprintf("Track #%d has been removed by %s.", trackNum, firstName(c, m)), replyOpts)
+	_, err = m.ReplyText(c, fmt.Sprintf("Track #%d has been removed by %s.", trackNum, html.EscapeString(firstName(c, m))), replyOpts)
 	return err
 }

@@ -30,6 +30,21 @@ type TelegramCalls struct {
 	clients     map[int]*tg.Client
 	statusCache *cache.Cache[td.ChatMemberStatus]
 	inviteCache *cache.Cache[string]
+
+	// recentJoinCache remembers, per "chatID:assistantUserID", chats that an
+	// assistant has just joined. leaveAssistantDialogs consults this to avoid
+	// immediately leaving a chat it was only just added to (e.g. right before
+	// starting playback, or when CHANNELS_TOO_MUCH triggers an eviction leave
+	// sweep for the same assistant). Without this grace window, the assistant
+	// would join a group and then get swept out again on the very next leave
+	// pass, which also caused bursts of LeaveChannel calls -> FLOOD_WAIT.
+	recentJoinCache *cache.Cache[bool]
+
+	// prefetchTimers holds, per chatID, the pending timer that will trigger a
+	// background download of the upcoming track shortly before the current
+	// one ends. See prefetch.go.
+	prefetchMu     sync.Mutex
+	prefetchTimers map[int64]*time.Timer
 }
 
 var (
@@ -41,10 +56,12 @@ var (
 func getCalls() *TelegramCalls {
 	once.Do(func() {
 		instance = &TelegramCalls{
-			assistants:  make(map[int]*Assistant),
-			clients:     make(map[int]*tg.Client),
-			statusCache: cache.NewCache[td.ChatMemberStatus](2 * time.Hour),
-			inviteCache: cache.NewCache[string](2 * time.Hour),
+			assistants:      make(map[int]*Assistant),
+			clients:         make(map[int]*tg.Client),
+			statusCache:     cache.NewCache[td.ChatMemberStatus](2 * time.Hour),
+			inviteCache:     cache.NewCache[string](2 * time.Hour),
+			recentJoinCache: cache.NewCache[bool](recentJoinGracePeriod),
+			prefetchTimers:  make(map[int64]*time.Timer),
 		}
 	})
 	return instance

@@ -10,6 +10,7 @@ package handlers
 
 import (
 	"fmt"
+	"html"
 
 	"ashokshau/tgmusic/src/core/cache"
 	"ashokshau/tgmusic/src/vc"
@@ -31,6 +32,6 @@ func stopHandler(c *td.Client, m *td.Message) error {
 	}
 
 	_ = vc.Calls.Stop(chatID, false)
-	_, _ = m.ReplyText(c, fmt.Sprintf("<b>Stream ended by</b> %s", firstName(c, m)), replyOpts)
+	_, _ = m.ReplyText(c, fmt.Sprintf("<b>Stream ended by</b> %s", html.EscapeString(firstName(c, m))), replyOpts)
 	return nil
 }

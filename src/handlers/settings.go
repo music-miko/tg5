@@ -11,6 +11,7 @@ package handlers
 import (
 	"ashokshau/tgmusic/src/utils"
 	"fmt"
+	"html"
 	"strings"
 
 	"ashokshau/tgmusic/src/core"
@@ -65,7 +66,7 @@ func settingsHandler(c *td.Client, m *td.Message) error {
 	}
 
 	text := fmt.Sprintf("<u><b>%s settings</b></u>\n\nClick the buttons below to change this chat's current settings.",
-		chat.Title)
+		html.EscapeString(chat.Title))
 
 	_, err = m.ReplyText(c, text, &td.SendTextMessageOpts{ReplyMarkup: core.SettingsKeyboard(playModeStr, getAdminMode, cmdDelete, language), ParseMode: td.ParseModeHTML})
 	return err
@@ -147,7 +148,7 @@ func settingsCallbackHandler(c *td.Client, cb *td.UpdateNewCallbackQuery) error 
 	}
 
 	text := fmt.Sprintf("<u><b>%s settings</b></u>\n\nClick the buttons below to change this chat's current settings.",
-		chat.Title)
+		html.EscapeString(chat.Title))
 
 	_, err = cb.EditMessageText(c, text, &td.EditTextMessageOpts{ReplyMarkup: core.SettingsKeyboard(playModeStr, getAdminMode, cmdDelete, language), ParseMode: td.ParseModeHTML})
 	if err != nil {

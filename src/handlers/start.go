@@ -11,6 +11,7 @@ package handlers
 import (
 	"ashokshau/tgmusic/config"
 	"fmt"
+	"html"
 	"runtime"
 	"strings"
 	"time"
@@ -58,8 +59,8 @@ func startHandler(c *td.Client, m *td.Message) error {
 
 		response := fmt.Sprintf(
 			"👋 Hello, %s.\n\n%s is a music bot for Telegram — stream from YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn and more, right inside any group voice chat.\n\nUse /help to explore all commands.",
-			firstName(c, m),
-			c.Me.FirstName,
+			html.EscapeString(firstName(c, m)),
+			html.EscapeString(c.Me.FirstName),
 		)
 
 		_, err := m.ReplyPhoto(c, td.InputFileRemote{Id: config.StartImg}, &td.SendPhotoOpts{
@@ -78,7 +79,7 @@ func startHandler(c *td.Client, m *td.Message) error {
 	uptime := getFormattedDuration(time.Since(startTime))
 	response := fmt.Sprintf(
 		"👋<b>%s is ready</b>\n\n<b>Uptime:</b> <code>%s</code>\n\nA music player with support for YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn and more.",
-		c.Me.FirstName,
+		html.EscapeString(c.Me.FirstName),
 		uptime,
 	)
 
@@ -93,20 +94,27 @@ func startHandler(c *td.Client, m *td.Message) error {
 
 // setupGuideText returns the step-by-step setup guide shown via the Setup Guide button.
 func setupGuideText(botName string) string {
+	escBotName := html.EscapeString(botName)
 	return fmt.Sprintf(
 		"🅰️<b> Setup Guide</b>\n\n"+
 			"Get %s up and running in your group in under a minute:\n\n"+
 			"<b>Step 1 — Add the bot</b>\n"+
-			"Tap <b>Add to Group</b> and select your group.\n\n"+
+			"Tap <b>Add to Group</b> below and select your group.\n\n"+
 			"<b>Step 2 — Promote the bot</b>\n"+
-			"Make %s an admin and grant the <b>Invite Users via Link</b> (also shown as <b>Add Users</b>) permission. This is required for voice chats.\n\n"+
+			"Make %s an admin with these rights, so it can stream seamlessly:\n"+
+			"<table striped>"+
+			"<tr><th>Right</th><th>Why it's needed</th></tr>"+
+			"<tr><td align=\"left\">Invite Users via Link</td><td align=\"left\">Lets the bot's assistant account join your group's voice chat</td></tr>"+
+			"<tr><td align=\"left\">Delete Messages</td><td align=\"left\">Lets the bot clean up its own command/status messages</td></tr>"+
+			"<tr><td align=\"left\">Ban Users</td><td align=\"left\">Lets the bot recover its assistant automatically if it's ever muted or banned by mistake</td></tr>"+
+			"</table>\n\n"+
 			"<b>Step 3 — Start a voice chat</b>\n"+
 			"Open your group and start a video/voice chat.\n\n"+
 			"<b>Step 4 — Play music</b>\n"+
 			"Use <code>/play song name</code> or <code>/vplay song name</code> for video.\n\n"+
 			"Example: <code>/play shape of you</code>\n\n"+
 			"That's it — enjoy the music! 🎶",
-		botName, botName,
+		escBotName, escBotName,
 	)
 }
 
@@ -128,11 +136,11 @@ func setupCallbackHandler(c *td.Client, cb *td.UpdateNewCallbackQuery) error {
 		text := setupGuideText(c.Me.FirstName)
 
 		if isPhoto {
-			_, err := cb.EditMessageCaption(c, text, &td.EditCaptionOpts{ReplyMarkup: core.GuideBackMarkup(), ParseMode: "HTML"})
+			_, err := cb.EditMessageCaption(c, text, &td.EditCaptionOpts{ReplyMarkup: core.GuideBackMarkup(c.Me.Usernames.EditableUsername), ParseMode: "HTML"})
 			return err
 		}
 
-		_, err := cb.EditMessageText(c, text, &td.EditTextMessageOpts{ReplyMarkup: core.GuideBackMarkup(), ParseMode: "HTML", DisableWebPagePreview: true})
+		_, err := cb.EditMessageText(c, text, &td.EditTextMessageOpts{ReplyMarkup: core.GuideBackMarkup(c.Me.Usernames.EditableUsername), ParseMode: "HTML", DisableWebPagePreview: true})
 		return err
 
 	case strings.Contains(data, "setup_back"):
@@ -146,7 +154,7 @@ func setupCallbackHandler(c *td.Client, cb *td.UpdateNewCallbackQuery) error {
 			}
 			text := fmt.Sprintf(
 				"👋 Hello, %s.\n\n%s is a music bot for Telegram — stream from YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn and more, right inside any group voice chat.\n\nUse /help to explore all commands.",
-				name, c.Me.FirstName,
+				html.EscapeString(name), html.EscapeString(c.Me.FirstName),
 			)
 			_, err = cb.EditMessageCaption(c, text, &td.EditCaptionOpts{ReplyMarkup: core.PrivateStartMarkup(c.Me.Usernames.EditableUsername), ParseMode: "HTML"})
 			return err
@@ -155,7 +163,7 @@ func setupCallbackHandler(c *td.Client, cb *td.UpdateNewCallbackQuery) error {
 		uptime := getFormattedDuration(time.Since(startTime))
 		text := fmt.Sprintf(
 			"👋<b>%s is ready</b>\n\n<b>Uptime:</b> <code>%s</code>\n\nA music player with support for YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn and more.",
-			c.Me.FirstName, uptime,
+			html.EscapeString(c.Me.FirstName), uptime,
 		)
 		_, err := cb.EditMessageText(c, text, &td.EditTextMessageOpts{ReplyMarkup: core.GroupWelcomeMarkup(), ParseMode: "HTML", DisableWebPagePreview: true})
 		return err

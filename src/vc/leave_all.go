@@ -14,6 +14,7 @@ import (
 
 	"context"
 	"fmt"
+	"html"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,6 +23,16 @@ import (
 	td "github.com/AshokShau/gotdbot"
 	"github.com/amarnathcjd/gogram/telegram"
 )
+
+// tgTime renders a Telegram rich-HTML <tg-time> tag for t, which modern
+// clients render as a live timestamp localized to the viewer's own
+// timezone. The visible text is a plain fallback for older clients.
+func tgTime(t time.Time) string {
+	if t.IsZero() {
+		return "never"
+	}
+	return fmt.Sprintf("<tg-time unix=\"%d\">%s</tg-time>", t.Unix(), html.EscapeString(t.Format("Jan 2, 15:04 MST")))
+}
 
 func (c *TelegramCalls) LeaveAll() (int, error) {
 	var totalLeft atomic.Int64
@@ -67,8 +78,24 @@ func (c *TelegramCalls) LeaveAllForClient(index int) (int, error) {
 	return c.leaveAssistantDialogs(call)
 }
 
+// recentJoinGracePeriod is how long a chat is protected from being auto-left
+// after an assistant joins it. This prevents the "join then leave instantly"
+// pattern that used to happen when: (a) a user just added the bot/assistant
+// to a fresh group and hasn't started playback yet when a periodic AutoLeave
+// sweep runs, or (b) a play attempt fails with CHANNELS_TOO_MUCH right after
+// joining, which used to trigger an immediate LeaveAllForClient sweep that
+// caught the chat it had just joined. Both cases also produced bursts of
+// LeaveChannel calls in a short window, which is what was tripping FLOOD_WAIT.
+const recentJoinGracePeriod = 30 * time.Minute
+
+// leaveDelay is the pause between consecutive LeaveChannel calls for the same
+// assistant. Kept deliberately conservative to stay well under Telegram's
+// leave-rate limits and avoid FLOOD_WAIT during large sweeps.
+const leaveDelay = 3 * time.Second
+
 func (c *TelegramCalls) leaveAssistantDialogs(ctx *Assistant) (int, error) {
 	userBot := ctx.App
+	userID := userBot.Me().ID
 	var totalLeft int
 	dialogs, err := userBot.GetDialogs(&telegram.DialogOptions{
 		Limit:            -1,
@@ -99,7 +126,20 @@ func (c *TelegramCalls) leaveAssistantDialogs(ctx *Assistant) (int, error) {
 			continue
 		}
 
+		if config.LoggerId != 0 && chatID == config.LoggerId {
+			logger.Debug("skipping logger group", "user", userBot.Me().FirstName, "chat_id", chatID)
+			continue
+		}
+
 		if cache.ChatCache.IsActive(chatID) {
+			continue
+		}
+
+		if _, recentlyJoined := c.recentJoinCache.Get(fmt.Sprintf("%d:%d", chatID, userID)); recentlyJoined {
+			logger.Debug("skipping recently joined chat",
+				"user", userBot.Me().FirstName,
+				"chat_id", chatID,
+			)
 			continue
 		}
 
@@ -135,7 +175,7 @@ func (c *TelegramCalls) leaveAssistantDialogs(ctx *Assistant) (int, error) {
 			break
 		}
 
-		time.Sleep(1 * time.Second)
+		time.Sleep(leaveDelay)
 	}
 	return totalLeft, nil
 }
@@ -172,8 +212,11 @@ func (c *TelegramCalls) runAutoLeave(bot *td.Client) {
 	}
 	logger.Info("AutoLeave: completed", "leftCount", leftCount)
 	if leftCount > 0 && config.LoggerId != 0 {
-		msg := fmt.Sprintf("AutoLeave: Assistant left %d inactive chats", leftCount)
-		if _, err = bot.SendTextMessage(config.LoggerId, msg, nil); err != nil {
+		msg := fmt.Sprintf(
+			"<b>AutoLeave</b>\nAssistant left <code>%d</code> inactive chats\n<i>%s</i>",
+			leftCount, tgTime(time.Now()),
+		)
+		if _, err = bot.SendTextMessage(config.LoggerId, msg, &td.SendTextMessageOpts{ParseMode: "HTML"}); err != nil {
 			logger.Error("AutoLeave: failed to send log message", "error", err)
 		}
 	}

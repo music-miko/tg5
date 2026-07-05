@@ -185,55 +185,38 @@ func statsHandler(c *td.Client, m *td.Message) error {
 	chats, _ := db.Instance.GetAllChats()
 	users, _ := db.Instance.GetAllUsers()
 
-	memLine := fmt.Sprintf("• Ram usage: %s\n", stats.AppMemUsed)
+	memLabel := "Ram usage"
+	memValue := stats.AppMemUsed
 	if stats.MemLimit != "" {
-		memLine = fmt.Sprintf("• Ram usage: %s | %s\n", stats.AppMemUsed, stats.MemLimit)
+		memValue = fmt.Sprintf("%s / %s", stats.AppMemUsed, stats.MemLimit)
+	}
+
+	row := func(label, value string) string {
+		return fmt.Sprintf("<tr><td align=\"left\">%s</td><td align=\"right\">%s</td></tr>", label, value)
 	}
 
 	text := fmt.Sprintf(
-		"<b>%s — Runtime Status</b>\n"+
-			"<b>Version:</b> %s\n"+
-			"────────────────────────────────────\n\n"+
-			"<b>System</b>\n"+
-			"• CPU usage: %s (%d cores)\n"+
-			"• Ram usage: %s | %s\n"+
-			"• Storage: %s | %s\n\n"+
-			"<b>Application</b>\n"+
-			"• Uptime: %s\n"+
-			"• Goroutines: %d\n"+
-			"• Go Version: %s\n"+
-			"• CPU usage: %s\n"+
-			"%s"+
-			"• Heap: %s\n"+
-			"• GC Runs: %d (pause %s)\n\n"+
-			"<b>Database</b>\n"+
-			"• Chats: %d\n"+
-			"• Users: %d\n\n"+
-			"────────────────────────────────────",
+		"<b>%s — Runtime Status</b>\n<b>Version:</b> %s\n\n"+
+			"<b>System</b>\n<table bordered striped>%s%s%s</table>\n\n"+
+			"<b>Application</b>\n<table bordered striped>%s%s%s%s%s%s</table>\n\n"+
+			"<b>Database</b>\n<table bordered striped>%s%s</table>",
 
 		c.Me.FirstName,
 		config.Version,
 
-		stats.SystemCPU,
-		stats.CPUCores,
-		stats.SystemMemUsed,
-		stats.SystemMemTotal,
-		stats.DiskUsed,
-		stats.DiskTotal,
+		row("CPU usage", fmt.Sprintf("%s (%d cores)", stats.SystemCPU, stats.CPUCores)),
+		row("Ram usage", fmt.Sprintf("%s / %s", stats.SystemMemUsed, stats.SystemMemTotal)),
+		row("Storage", fmt.Sprintf("%s / %s", stats.DiskUsed, stats.DiskTotal)),
 
-		stats.Uptime,
-		stats.Goroutines,
-		stats.GoVersion,
-		stats.AppCPU,
+		row("Uptime", stats.Uptime),
+		row("Goroutines", fmt.Sprintf("%d", stats.Goroutines)),
+		row("Go Version", stats.GoVersion),
+		row("CPU usage", stats.AppCPU),
+		row(memLabel, memValue),
+		row("Heap / GC", fmt.Sprintf("%s / %d runs (%s)", stats.AppHeap, stats.GCCount, stats.GCPause)),
 
-		memLine,
-
-		stats.AppHeap,
-		stats.GCCount,
-		stats.GCPause,
-
-		len(chats),
-		len(users),
+		row("Chats", fmt.Sprintf("%d", len(chats))),
+		row("Users", fmt.Sprintf("%d", len(users))),
 	)
 
 	_, _ = sysMsg.EditText(c, text, &td.EditTextMessageOpts{ParseMode: "HTML"})

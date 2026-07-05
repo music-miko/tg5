@@ -11,6 +11,7 @@ package handlers
 import (
 	"ashokshau/tgmusic/src/utils"
 	"fmt"
+	"html"
 	"strconv"
 
 	"ashokshau/tgmusic/src/core/cache"
@@ -78,6 +79,6 @@ func seekHandler(c *td.Client, m *td.Message) error {
 		return nil
 	}
 
-	_, _ = m.ReplyText(c, fmt.Sprintf("<b>Stream skipped %s and started from %s seconds by</b> %s", utils.SecToMin(seekTime), utils.SecToMin(toSeek), firstName(c, m)), replyOpts)
+	_, _ = m.ReplyText(c, fmt.Sprintf("<b>Stream skipped %s and started from %s seconds by</b> %s", utils.SecToMin(seekTime), utils.SecToMin(toSeek), html.EscapeString(firstName(c, m))), replyOpts)
 	return nil
 }

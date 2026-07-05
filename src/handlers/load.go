@@ -37,6 +37,7 @@ func LoadModules(c *gotdbot.Client) {
 	c.OnCommand("clearass", clearAssistantsHandler)
 	c.OnCommand("clearAssistants", clearAssistantsHandler)
 	c.OnCommand("leaveAll", leaveAllHandler)
+	c.OnCommand("as", asHandler)
 	c.OnCommand("logger", loggerHandler)
 	c.OnCommand("privacy", privacyHandler)
 	c.OnCommand("loop", loopHandler)
@@ -72,6 +73,9 @@ func LoadModules(c *gotdbot.Client) {
 	c.OnCommand("myplaylists", myPlaylistsHandler)
 	c.OnCommand("myplist", myPlaylistsHandler)
 	c.OnCommand("stats", statsHandler)
+	c.OnCommand("yt", ytStatsHandler)
+	c.OnCommand("gs", groupStatsHandler)
+	c.OnCommand("groupstats", groupStatsHandler)
 
 	c.OnUpdateNewCallbackQuery(helpCallbackHandler, callbackquery.Prefix("help_"))
 	c.OnUpdateNewCallbackQuery(playCallbackHandler, callbackquery.Prefix("play_"))

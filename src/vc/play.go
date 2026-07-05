@@ -14,6 +14,7 @@ import (
 // errorKind classifies a Telegram group call error for retry strategy.
 type errorKind int
 
+const joinFloodWaitMarker = "FLOOD_WAIT_X"
 const (
 	errFatal     errorKind = iota // return immediately with a user-facing message
 	errRetryOnce                  // retry the same assistant once (e.g. participants race)

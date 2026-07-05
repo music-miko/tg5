@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"sync"
 	"time"
@@ -32,6 +33,22 @@ type Assistant struct {
 	pendingConnections map[int64]*pendingConnection
 	waitConnect        map[int64]chan error
 
+	// connectionStates tracks the last known ntgcalls connection state per
+	// chat, updated on every onConnectionChange event (not just while a
+	// connectCall handshake is in flight). binding.Calls()[chatId] only
+	// tells us the native layer still has bookkeeping for a chat - it does
+	// NOT mean the underlying transport is still alive. Once a call first
+	// reaches Connected, nothing else in this codebase observes it again
+	// unless something is watching this map, so a connection that later
+	// drops to Failed/Closed/Timeout (dead voice chat, network blip, the
+	// group's video chat being stopped/restarted server-side, etc.) leaves
+	// binding.Calls()[chatId] non-nil forever. Play() previously treated
+	// that non-nil entry alone as "still good" and just re-pointed the
+	// stream source at it (SetStreamSources), which can return no error
+	// while pushing frames into a dead connection - joins look successful,
+	// nothing actually streams, and nothing logs an error. See isCallHealthy.
+	connectionStates map[int64]ntgcalls.ConnectionState
+
 	streamEndCallbacks []ntgcalls.StreamEndCallback
 }
 
@@ -42,6 +59,7 @@ func newAssistant(app *tg.Client) (*Assistant, error) {
 		inputGroupCalls:    make(map[int64]tg.InputGroupCall),
 		pendingConnections: make(map[int64]*pendingConnection),
 		waitConnect:        make(map[int64]chan error),
+		connectionStates:   make(map[int64]ntgcalls.ConnectionState),
 	}
 	if app.IsConnected() {
 		self, err := app.GetMe()
@@ -62,15 +80,68 @@ func (a *Assistant) Close() {
 	a.binding.Free()
 }
 
+// isCallHealthy reports whether chatId's call is both known to the native
+// binding AND was last observed in the Connected state. A call can be
+// present in binding.Calls() while its underlying transport is dead - see
+// the connectionStates field comment for why.
+func (a *Assistant) isCallHealthy(chatId int64) bool {
+	if a.binding.Calls()[chatId] == nil {
+		return false
+	}
+	a.mu.RLock()
+	state, known := a.connectionStates[chatId]
+	a.mu.RUnlock()
+	return known && state == ntgcalls.Connected
+}
+
 func (a *Assistant) Play(ctx context.Context, chatId int64, mediaDescription ntgcalls.MediaDescription) error {
 	if a.binding.Calls()[chatId] != nil {
-		return a.binding.SetStreamSources(chatId, ntgcalls.CaptureStream, mediaDescription)
+		if a.isCallHealthy(chatId) {
+			slog.Info("[Play] existing healthy call found, reusing connection (no rejoin)", "chat_id", chatId)
+			err := a.binding.SetStreamSources(chatId, ntgcalls.CaptureStream, mediaDescription)
+			if err != nil {
+				slog.Warn("[Play] SetStreamSources on existing call failed", "chat_id", chatId, "error", err)
+			} else {
+				slog.Info("[Play] SetStreamSources on existing call succeeded", "chat_id", chatId)
+			}
+			return err
+		}
+
+		// The native binding still has bookkeeping for this chat, but the
+		// last observed connection state was never Connected, or was
+		// Failed/Closed/Timeout since. Reusing it via SetStreamSources
+		// alone would silently push frames into a dead transport. Force a
+		// clean teardown so the fresh connectCall below actually rejoins
+		// the group call instead of trusting stale state.
+		a.mu.RLock()
+		lastState, known := a.connectionStates[chatId]
+		a.mu.RUnlock()
+		slog.Warn("[Play] existing call found but not healthy, forcing stop before rejoin",
+			"chat_id", chatId, "last_state_known", known, "last_state", lastState)
+
+		if err := a.binding.Stop(chatId); err != nil {
+			slog.Warn("[Play] Stop on stale call failed, continuing to rejoin anyway", "chat_id", chatId, "error", err)
+		}
+		a.mu.Lock()
+		delete(a.connectionStates, chatId)
+		a.mu.Unlock()
 	}
+
+	slog.Info("[Play] no existing healthy call, connecting fresh", "chat_id", chatId)
 	if err := a.connectCall(ctx, chatId, mediaDescription, ""); err != nil {
+		slog.Warn("[Play] connectCall failed", "chat_id", chatId, "error", err)
 		return err
 	}
+	slog.Info("[Play] connectCall succeeded", "chat_id", chatId)
+
 	if chatId < 0 {
-		return a.joinPresentation(ctx, chatId, mediaDescription.Screen != nil)
+		err := a.joinPresentation(ctx, chatId, mediaDescription.Screen != nil)
+		if err != nil {
+			slog.Warn("[Play] joinPresentation failed", "chat_id", chatId, "error", err)
+		} else {
+			slog.Info("[Play] joinPresentation succeeded", "chat_id", chatId)
+		}
+		return err
 	}
 	return nil
 }
@@ -79,6 +150,7 @@ func (a *Assistant) stopCall(chatId int64, banned bool) error {
 	a.mu.Lock()
 	a.presentations = stdRemove(a.presentations, chatId)
 	delete(a.pendingConnections, chatId)
+	delete(a.connectionStates, chatId)
 	inputGroupCall := a.inputGroupCalls[chatId]
 	a.mu.Unlock()
 
@@ -626,9 +698,15 @@ func (a *Assistant) onRequestBroadcastPart(chatId int64, segmentPartRequest ntgc
 }
 
 func (a *Assistant) onConnectionChange(chatId int64, state ntgcalls.NetworkInfo) {
-	a.mu.RLock()
+	a.mu.Lock()
+	a.connectionStates[chatId] = state.State
 	waitCh := a.waitConnect[chatId]
-	a.mu.RUnlock()
+	a.mu.Unlock()
+
+	if state.State == ntgcalls.Closed || state.State == ntgcalls.Failed || state.State == ntgcalls.Timeout {
+		slog.Warn("[Assistant] connection state degraded", "chat_id", chatId, "state", state.State)
+	}
+
 	if waitCh == nil {
 		return
 	}

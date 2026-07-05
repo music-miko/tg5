@@ -16,6 +16,7 @@ import (
 
 	"ashokshau/tgmusic/src/core/db"
 	"ashokshau/tgmusic/src/core/dl"
+	"ashokshau/tgmusic/src/utils"
 
 	td "github.com/AshokShau/gotdbot"
 )
@@ -276,11 +277,7 @@ func playlistInfoHandler(c *td.Client, m *td.Message) error {
 
 	args := Args(m)
 	if args == "" {
-		_, err := m.ReplyText(
-			c,
-			"<b>Usage:</b> /playlistinfo [playlist id]",
-			&td.SendTextMessageOpts{ParseMode: "HTML"},
-		)
+		_, err := replyRich(c, m, "<b>Usage:</b> /playlistinfo [playlist id]", nil)
 		return err
 	}
 
@@ -290,27 +287,47 @@ func playlistInfoHandler(c *td.Client, m *td.Message) error {
 		return err
 	}
 
-	var songs []string
-	for i, song := range playlist.Songs {
-		songs = append(songs, fmt.Sprintf("%d. %s (%s)", i+1, html.EscapeString(song.Name), html.EscapeString(song.URL)))
-	}
-
 	owner, err := c.GetUser(playlist.UserID)
 	if err != nil {
 		return td.EndGroups
 	}
 
-	_, err = m.ReplyText(
-		c,
-		fmt.Sprintf(
-			"<b>Playlist Info</b>\n\n<b>Name:</b> %s\n<b>Owner:</b> %s\n<b>Songs:</b> %d\n\n%s",
-			html.EscapeString(playlist.Name),
-			html.EscapeString(owner.FirstName),
-			len(playlist.Songs),
-			strings.Join(songs, "\n"),
-		),
-		&td.SendTextMessageOpts{ParseMode: "HTML"},
-	)
+	var b strings.Builder
+	b.WriteString(headingBlock(4, fmt.Sprintf("Playlist: %s", html.EscapeString(playlist.Name))))
+	b.WriteString("\n\n")
+	b.WriteString(fmt.Sprintf("• <b>Owner:</b> %s\n", html.EscapeString(owner.FirstName)))
+	b.WriteString(fmt.Sprintf("• <b>ID:</b> <code>%s</code>\n", html.EscapeString(playlist.ID)))
+	b.WriteString(fmt.Sprintf("• <b>Songs:</b> %d\n", len(playlist.Songs)))
+
+	if len(playlist.Songs) == 0 {
+		b.WriteString("\n<i>This playlist has no songs yet.</i>")
+	} else {
+		b.WriteString("\n<table bordered striped>")
+		b.WriteString("<tr><th align=\"center\">#</th><th>Title</th><th align=\"center\">Duration</th><th>Platform</th></tr>")
+
+		shown := 0
+		for i, song := range playlist.Songs {
+			if i >= 30 {
+				break
+			}
+			shown++
+			b.WriteString(fmt.Sprintf(
+				"<tr><td align=\"center\">%d</td><td align=\"left\"><a href=\"%s\">%s</a></td><td align=\"center\">%s</td><td align=\"center\">%s</td></tr>",
+				i+1,
+				html.EscapeString(song.URL),
+				html.EscapeString(truncate(song.Name, 40)),
+				utils.SecToMin(song.Duration),
+				html.EscapeString(song.Platform),
+			))
+		}
+		b.WriteString("</table>")
+
+		if len(playlist.Songs) > shown {
+			b.WriteString(fmt.Sprintf("\n<i>...and %d more tracks</i>", len(playlist.Songs)-shown))
+		}
+	}
+
+	_, err = replyRich(c, m, b.String(), nil)
 	return td.EndGroups
 }
 
@@ -329,19 +346,22 @@ func myPlaylistsHandler(c *td.Client, m *td.Message) error {
 		return err
 	}
 
-	var playlistInfo []string
+	var b strings.Builder
+	b.WriteString(headingBlock(4, "My Playlists"))
+	b.WriteString("\n\n<table bordered striped>")
+	b.WriteString("<tr><th>Name</th><th align=\"center\">ID</th><th align=\"center\">Songs</th></tr>")
+
 	for _, playlist := range playlists {
-		playlistInfo = append(
-			playlistInfo,
-			fmt.Sprintf("- %s (<code>%s</code>)", html.EscapeString(playlist.Name), html.EscapeString(playlist.ID)),
-		)
+		b.WriteString(fmt.Sprintf(
+			"<tr><td align=\"left\">%s</td><td align=\"center\"><code>%s</code></td><td align=\"center\">%d</td></tr>",
+			html.EscapeString(truncate(playlist.Name, 30)),
+			html.EscapeString(playlist.ID),
+			len(playlist.Songs),
+		))
 	}
+	b.WriteString("</table>")
+	b.WriteString(fmt.Sprintf("\n<i>Use /playlistinfo &lt;id&gt; to view a playlist's songs.</i>"))
 
-	_, err = m.ReplyText(
-		c,
-		fmt.Sprintf("<b>My Playlists</b>\n\n%s", strings.Join(playlistInfo, "\n")),
-		&td.SendTextMessageOpts{ParseMode: "HTML"},
-	)
-
+	_, err = replyRich(c, m, b.String(), nil)
 	return err
 }

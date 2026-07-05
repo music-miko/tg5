@@ -11,13 +11,6 @@ import (
 	td "github.com/AshokShau/gotdbot"
 )
 
-// joinFloodWaitMarker tags errors from handleJoinError's flood-wait case so
-// classifyError can rotate to a different assistant specifically for a
-// flood wait hit while joining a chat's invite link - not for flood waits
-// encountered anywhere else (e.g. during call.Play()), which are left to
-// their existing handling instead of triggering assistant rotation.
-const joinFloodWaitMarker = "ASSISTANT_JOIN_FLOOD_WAIT"
-
 // errorKind classifies a Telegram group call error for retry strategy.
 type errorKind int
 
@@ -40,7 +33,7 @@ func classifyError(err error) errorKind {
 		return errRetryOnce
 	case strings.Contains(msg, "CHANNELS_TOO_MUCH"),
 		strings.Contains(msg, "FROZEN_METHOD_INVALID"),
-		strings.Contains(msg, joinFloodWaitMarker):
+		strings.Contains(msg, "FLOOD_WAIT_X"):
 		return errRotate
 	default:
 		return errUnknown

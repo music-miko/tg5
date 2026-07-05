@@ -103,28 +103,28 @@ func startHandler(c *td.Client, m *td.Message) error {
 func setupGuideText(botName string) string {
 	escBotName := html.EscapeString(botName)
 	return fmt.Sprintf(
-		"%s\n\n"+
-			"Get %s streaming in your group in under a minute — just follow these steps:\n\n"+
+		"%s\n"+
+			"<i>Get %s streaming in your group in under a minute — just four quick steps.</i>\n\n"+
 			"%s\n"+
-			"Tap <b>Add to Group</b> below and pick your group.\n\n"+
+			"Tap <b>➕ Add to Group</b> below and choose the group you want music in.\n\n"+
 			"%s\n"+
-			"Promote %s to admin with these rights, so it can stream seamlessly:\n\n"+
+			"Promote %s to admin with these rights so it can stream without interruptions:\n\n"+
 			"• <b>Invite Users via Link</b> — lets the bot's assistant account join your group's voice chat\n"+
-			"• <b>Delete Messages</b> — lets the bot clean up its own command/status messages\n"+
-			"• <b>Ban Users</b> — lets the bot recover its assistant automatically if it's ever muted or banned by mistake\n\n"+
+			"• <b>Delete Messages</b> — lets the bot clean up its own command and status messages\n"+
+			"• <b>Ban Users</b> — lets the bot auto-recover its assistant if it's ever muted or banned by mistake\n\n"+
 			"%s\n"+
-			"Open your group and start a video/voice chat.\n\n"+
+			"Open your group and start a voice/video chat — the bot joins automatically once it's live.\n\n"+
 			"%s\n"+
-			"Use <code>/play song name</code> or <code>/vplay song name</code> for video.\n"+
-			"Example: <code>/play shape of you</code>\n\n"+
-			"That's it — enjoy the music! 🎶",
+			"Use <code>/play song name</code> for audio, or <code>/vplay song name</code> to stream video.\n"+
+			"<i>Example:</i> <code>/play shape of you</code>\n\n"+
+			"<b>🎶 That's it — you're all set. Enjoy the music!</b>",
 		headingBlock(2, "🅰️ Setup Guide"),
 		escBotName,
-		headingBlock(4, "Step 1 — Add the bot"),
-		headingBlock(4, "Step 2 — Promote the bot"),
+		headingBlock(4, "① Add the bot"),
+		headingBlock(4, "② Promote the bot"),
 		escBotName,
-		headingBlock(4, "Step 3 — Start a voice chat"),
-		headingBlock(4, "Step 4 — Play music"),
+		headingBlock(4, "③ Start a voice chat"),
+		headingBlock(4, "④ Play music"),
 	)
 }
 

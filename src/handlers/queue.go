@@ -74,14 +74,14 @@ func queueHandler(c *td.Client, m *td.Message) error {
 	if len(queue) > 1 {
 		b.WriteString(fmt.Sprintf("\n<b>Next Up (%d):</b>\n", len(queue)-1))
 		b.WriteString("<table bordered striped>")
-		b.WriteString("<tr><th>#</th><th>Title</th><th>By</th><th>Duration</th></tr>")
+		b.WriteString("<tr><th align=\"center\">#</th><th>Title</th><th>By</th><th>Duration</th></tr>")
 
 		for i, song := range queue[1:] {
 			if i >= 14 {
 				break
 			}
 			b.WriteString(fmt.Sprintf(
-				"<tr><td align=\"right\">%d</td><td align=\"left\">%s</td><td align=\"left\">%s</td><td align=\"right\">%s</td></tr>",
+				"<tr><td align=\"center\">%d</td><td align=\"left\">%s</td><td align=\"left\">%s</td><td align=\"right\">%s</td></tr>",
 				i+1,
 				html.EscapeString(truncate(song.Name, 35)),
 				html.EscapeString(truncate(song.User, 20)),

@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"strings"
 
+	"ashokshau/tgmusic/config"
+
 	td "github.com/AshokShau/gotdbot"
 )
 
@@ -103,6 +105,21 @@ func editRichByID(c *td.Client, chatId, messageId int64, htmlText string, markup
 func promoteToRich(c *td.Client, chatId, messageId int64, htmlText string, markup td.ReplyMarkup) (*td.Message, error) {
 	_ = c.DeleteMessages(chatId, []int64{messageId}, &td.DeleteMessagesOpts{Revoke: true})
 	return sendRich(c, chatId, htmlText, markup)
+}
+
+// demoteToPhoto deletes the message at chatId/messageId and sends a fresh
+// photo message (config.StartImg) with htmlText as its caption. This is the
+// reverse of promoteToRich: use it when navigating back from a promoted
+// rich-text screen to a photo-based one (e.g. the /start welcome image),
+// since a plain caption can't carry rich blocks and a text message can't be
+// turned into a photo message in place — it has to be recreated.
+func demoteToPhoto(c *td.Client, chatId, messageId int64, htmlText string, markup td.ReplyMarkup) (*td.Message, error) {
+	_ = c.DeleteMessages(chatId, []int64{messageId}, &td.DeleteMessagesOpts{Revoke: true})
+	return c.SendPhoto(chatId, td.InputFileRemote{Id: config.StartImg}, &td.SendPhotoOpts{
+		ParseMode:   "HTML",
+		Caption:     htmlText,
+		ReplyMarkup: markup,
+	})
 }
 
 // headingBlock renders a Rich HTML heading, clamped to the supported h1-h6 range.

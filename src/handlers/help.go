@@ -13,7 +13,6 @@ import (
 	"html"
 	"strings"
 
-	"ashokshau/tgmusic/config"
 	"ashokshau/tgmusic/src/core"
 
 	td "github.com/AshokShau/gotdbot"
@@ -112,16 +111,26 @@ func getHelpCategories() map[string]struct {
 
 // helpCallbackHandler handles the /help menu's buttons. It's only ever
 // reached from the private-chat /start photo message (groups don't wire up
-// these buttons), which matters because category pages render real <table>
-// and <details> rich blocks — and rich blocks can't live in a photo
-// caption. So:
-//   - help_all / help_back show plain prose with no rich blocks, and can
-//     stay as a caption edit on the photo, or on whatever message is
-//     currently showing if we've already left the photo behind.
-//   - a category page always needs to be a genuine rich text message: if
-//     we're still on the photo, it gets deleted and replaced with a new
-//     rich message; if we're already on a promoted rich message (navigating
-//     from one category to another), it's edited in place.
+// these buttons).
+//
+// The photo is only ever shown on the very first screen (/start) and the
+// very last one you can return to ("Home"). The moment "Help" is pressed,
+// the photo is dropped in favor of a genuine rich text message — every
+// screen after that (the category menu, and each category page) is plain
+// rich text, so all navigation between them is a simple in-place edit with
+// no delete/resend involved:
+//   - help_all: if we're still on the photo, promote to a rich-text
+//     category menu (delete + send, unavoidable since a caption can't
+//     become a rich message); otherwise just edit the existing rich
+//     message in place.
+//   - a category page: always reached from the already-image-free category
+//     menu, so this is a plain edit in place (the isPhoto branch is kept
+//     only as a defensive fallback).
+//   - help_back ("Home"): always leaves rich text and returns to the photo
+//     welcome screen, which means deleting the rich message and sending a
+//     fresh photo — the one delete/resend that can't be avoided, since
+//     Telegram has no way to turn a text message into a photo message in
+//     place.
 func helpCallbackHandler(c *td.Client, cb *td.UpdateNewCallbackQuery) error {
 	data := cb.DataString()
 
@@ -142,36 +151,33 @@ func helpCallbackHandler(c *td.Client, cb *td.UpdateNewCallbackQuery) error {
 
 	if strings.Contains(data, "help_all") {
 		_ = cb.Answer(c, 0, false, "Opening help menu...", "")
-		response := fmt.Sprintf("Hello %s,\n\nI am %s, a fast and powerful music player for Telegram.\n\n<b>Supported platforms:</b> YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn and more.\n\nUse the buttons below to explore available commands.", html.EscapeString(user.FirstName), html.EscapeString(c.Me.FirstName))
+		response := fmt.Sprintf(
+			"%s\nHello %s, pick a category below to see what I can do.\n\n<b>Supported platforms:</b> YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn and more.",
+			headingBlock(3, fmt.Sprintf("📖 %s — Help Menu", html.EscapeString(c.Me.FirstName))),
+			html.EscapeString(user.FirstName),
+		)
 
 		if isPhoto {
-			_, _ = cb.EditMessageCaption(c, response, &td.EditCaptionOpts{ReplyMarkup: core.HelpMenuKeyboard(), ParseMode: "HTML"})
-			return nil
+			_, err := promoteToRich(c, cb.ChatId, cb.MessageId, response, core.HelpMenuKeyboard())
+			return err
 		}
-		_ = c.DeleteMessages(cb.ChatId, []int64{cb.MessageId}, &td.DeleteMessagesOpts{Revoke: true})
-		_, _ = c.SendPhoto(cb.ChatId, td.InputFileRemote{Id: config.StartImg}, &td.SendPhotoOpts{
-			ParseMode:   "HTML",
-			Caption:     response,
-			ReplyMarkup: core.HelpMenuKeyboard(),
-		})
-		return nil
+		_, err := editRichByID(c, cb.ChatId, cb.MessageId, response, core.HelpMenuKeyboard())
+		return err
 	}
 
 	if strings.Contains(data, "help_back") {
 		_ = cb.Answer(c, 0, false, "Returning to main menu...", "")
 		response := fmt.Sprintf("👋 Hello, %s.\n\n%s is a music bot for Telegram — stream from YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn and more, right inside any group voice chat.\n\nUse /help to explore all commands.", html.EscapeString(user.FirstName), html.EscapeString(c.Me.FirstName))
+		markup := core.PrivateStartMarkup(c.Me.Usernames.EditableUsername)
 
 		if isPhoto {
-			_, _ = cb.EditMessageCaption(c, response, &td.EditCaptionOpts{ReplyMarkup: core.PrivateStartMarkup(c.Me.Usernames.EditableUsername), ParseMode: "HTML"})
+			// Already on the photo (e.g. Home pressed twice) — nothing to
+			// recreate, just refresh the caption in place.
+			_, _ = cb.EditMessageCaption(c, response, &td.EditCaptionOpts{ReplyMarkup: markup, ParseMode: "HTML"})
 			return nil
 		}
-		_ = c.DeleteMessages(cb.ChatId, []int64{cb.MessageId}, &td.DeleteMessagesOpts{Revoke: true})
-		_, _ = c.SendPhoto(cb.ChatId, td.InputFileRemote{Id: config.StartImg}, &td.SendPhotoOpts{
-			ParseMode:   "HTML",
-			Caption:     response,
-			ReplyMarkup: core.PrivateStartMarkup(c.Me.Usernames.EditableUsername),
-		})
-		return nil
+		_, err := demoteToPhoto(c, cb.ChatId, cb.MessageId, response, markup)
+		return err
 	}
 
 	if category, ok := helpCategories[data]; ok {

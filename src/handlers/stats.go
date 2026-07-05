@@ -195,32 +195,40 @@ func statsHandler(c *td.Client, m *td.Message) error {
 		return fmt.Sprintf("<tr><td align=\"left\">%s</td><td align=\"right\">%s</td></tr>", label, value)
 	}
 
-	text := fmt.Sprintf(
-		"%s\n<b>Version:</b> <code>%s</code>\n\n"+
-			"%s\n<table bordered striped>%s%s%s</table>\n\n"+
-			"%s\n<table bordered striped>%s%s%s%s%s%s</table>\n\n"+
-			"%s\n<table bordered striped>%s%s</table>\n\n"+
-			"<i>Generated %s</i>",
-
-		headingBlock(2, fmt.Sprintf("%s — Runtime Status", c.Me.FirstName)),
-		config.Version,
-
-		headingBlock(3, "System"),
+	systemSection := detailsBlock("System", fmt.Sprintf(
+		"<table bordered striped>%s%s%s</table>",
 		row("CPU usage", fmt.Sprintf("%s (%d cores)", stats.SystemCPU, stats.CPUCores)),
 		row("Ram usage", fmt.Sprintf("%s / %s", stats.SystemMemUsed, stats.SystemMemTotal)),
 		row("Storage", fmt.Sprintf("%s / %s", stats.DiskUsed, stats.DiskTotal)),
+	))
 
-		headingBlock(3, "Application"),
+	appSection := detailsBlock("Application", fmt.Sprintf(
+		"<table bordered striped>%s%s%s%s%s%s</table>",
 		row("Uptime", stats.Uptime),
 		row("Goroutines", fmt.Sprintf("%d", stats.Goroutines)),
 		row("Go Version", stats.GoVersion),
 		row("CPU usage", stats.AppCPU),
 		row(memLabel, memValue),
 		row("Heap / GC", fmt.Sprintf("%s / %d runs (%s)", stats.AppHeap, stats.GCCount, stats.GCPause)),
+	))
 
-		headingBlock(3, "Database"),
+	dbSection := detailsBlock("Database", fmt.Sprintf(
+		"<table bordered striped>%s%s</table>",
 		row("Chats", fmt.Sprintf("%d", len(chats))),
 		row("Users", fmt.Sprintf("%d", len(users))),
+	))
+
+	text := fmt.Sprintf(
+		"%s\n<b>Version:</b> <code>%s</code>\n\n"+
+			"%s\n%s\n%s\n\n"+
+			"<i>Generated %s</i>",
+
+		headingBlock(4, fmt.Sprintf("%s — Runtime Status", c.Me.FirstName)),
+		config.Version,
+
+		systemSection,
+		appSection,
+		dbSection,
 
 		tgTime(time.Now()),
 	)

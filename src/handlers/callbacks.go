@@ -129,7 +129,7 @@ func playCallbackHandler(c *td.Client, cb *td.UpdateNewCallbackQuery) error {
 		}
 		_ = cb.Answer(c, 0, false, "Playback unmuted.", "")
 		text := buildTrackMessage("Now Playing", "▶") + fmt.Sprintf("\n\nUnmuted by %s", html.EscapeString(user.FirstName))
-		_, _ = cb.EditMessageText(c, text, &td.EditTextMessageOpts{ReplyMarkup: core.ControlButtons("unmute"), DisableWebPagePreview: true})
+		_, _ = cb.EditMessageText(c, text, &td.EditTextMessageOpts{ReplyMarkup: core.ControlButtons("unmute"), ParseMode: "HTML", DisableWebPagePreview: true})
 		return nil
 
 	case strings.Contains(data, "play_add_to_list"):

@@ -252,6 +252,22 @@ func GroupWelcomeMarkup() *gotdbot.ReplyMarkupInlineKeyboard {
 	}
 }
 
+// GuestReplyMarkup builds the keyboard for the personalized card sent back
+// via AnswerGuestQuery when someone summons the bot with its @username (or
+// a reply) in a chat it isn't a member of yet — Telegram's "Guest Bots"
+// feature. Only URL buttons are used here (no callbacks): the bot has no
+// ongoing presence in that chat until it's actually added, so a callback
+// button on this card wouldn't have anything reliable to call back into.
+func GuestReplyMarkup(username string) *gotdbot.ReplyMarkupInlineKeyboard {
+	addMeBtn := urlPrimary("➕ Add Me to Your Group", fmt.Sprintf("https://t.me/%s?startgroup=true", username))
+
+	return &gotdbot.ReplyMarkupInlineKeyboard{
+		Rows: [][]gotdbot.InlineKeyboardButton{
+			{addMeBtn},
+		},
+	}
+}
+
 // GuideBackMarkup is shown on the setup guide screen: Add to Group (which
 // the guide text explicitly tells the user to tap), then Back and Close.
 func GuideBackMarkup(username string) *gotdbot.ReplyMarkupInlineKeyboard {

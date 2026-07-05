@@ -85,6 +85,7 @@ func LoadModules(c *gotdbot.Client) {
 
 	c.OnUpdateChatMember(handleParticipant, nil)
 	c.OnUpdateNewMessage(handleVoiceChatMessage, nil)
+	c.OnUpdateNewGuestQuery(guestQueryHandler, nil)
 
 	slog.Debug("Handlers loaded successfully")
 }

@@ -152,6 +152,28 @@ func (c *TelegramCalls) joinUb(bot *td.Client, chatID int64, call *Assistant, in
 
 	_, err = ub.JoinChannel(link)
 	if err != nil {
+		// The cached link can go stale between resolveInviteLink returning it
+		// and JoinChannel actually using it (e.g. it was just revoked, or the
+		// cache still held a link from before it went bad). Rather than
+		// surfacing "invite link expired" to the user on the very first hit,
+		// drop the stale entry, mint one fresh link, and retry once before
+		// giving up.
+		if strings.Contains(err.Error(), "INVITE_HASH_EXPIRED") {
+			c.inviteCache.Delete(cacheKey)
+
+			freshLink, freshErr := c.resolveInviteLink(bot, chatID, cacheKey)
+			if freshErr == nil && freshLink != link {
+				logger.Info("invite link expired, retrying with a freshly created one", "chat_id", chatID, "index", index)
+				if _, retryErr := ub.JoinChannel(freshLink); retryErr == nil {
+					c.UpdateMembership(chatID, ub.Me().ID, &td.ChatMemberStatusMember{})
+					c.markRecentlyJoined(chatID, ub.Me().ID)
+					return nil
+				} else {
+					err = retryErr
+				}
+			}
+		}
+
 		return c.handleJoinError(bot, chatID, ub.Me().ID, index, err)
 	}
 

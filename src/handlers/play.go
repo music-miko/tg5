@@ -111,7 +111,7 @@ func handlePlay(c *td.Client, m *td.Message, isVideo bool) error {
 	}
 
 	if url == "" && args == "" && (!isReply || !isValidMedia(rMsg)) {
-		_, _ = m.ReplyText(c, "<b>Usage:</b>\n/play [song or URL]\n\n<b>Supported Platforms:</b>\n- YouTube\n- Spotify\n- JioSaavn\n- Apple Music", &td.SendTextMessageOpts{ReplyMarkup: core.SupportKeyboard(), ParseMode: "HTML"})
+		_, _ = replyRich(c, m, emptyPlayQueryText(isVideo), core.SupportKeyboard())
 		return td.EndGroups
 	}
 
@@ -425,4 +425,29 @@ func handleMultipleTracks(c *td.Client, m *td.Message, updater *td.Message, trac
 	})
 
 	return err
+}
+
+// emptyPlayQueryText builds a friendly Rich HTML message shown when /play or
+// /vplay is used with no song name, no link, and no valid reply to latch
+// onto — replacing the old bare "<b>Usage:</b> /play [song or URL]" line
+// with something that actually explains what to do next.
+func emptyPlayQueryText(isVideo bool) string {
+	cmd := "/play"
+	verb := "song"
+	if isVideo {
+		cmd = "/vplay"
+		verb = "video"
+	}
+
+	return fmt.Sprintf(
+		"%s\n\n"+
+			"You ran <code>%s</code> without a %s name, a link, or a reply to latch onto.\n\n"+
+			"<b>Try one of these:</b>\n"+
+			"• <code>%s shape of you</code>\n"+
+			"• Reply to an audio or video message with <code>%s</code>\n"+
+			"• Paste a YouTube, Spotify, JioSaavn, or Apple Music link after the command\n\n"+
+			"<b>Supported platforms:</b> YouTube • Spotify • JioSaavn • Apple Music",
+		headingBlock(3, "🎧 What would you like to play?"),
+		cmd, verb, cmd, cmd,
+	)
 }

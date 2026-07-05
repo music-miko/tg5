@@ -34,6 +34,16 @@ func url(text, link string) gotdbot.InlineKeyboardButton {
 	}
 }
 
+// urlPrimary is url() with the button's Style set to the dark-blue "primary"
+// color introduced for InlineKeyboardButton, used to make our single most
+// important call-to-action (Add to Group) stand out from the plain-styled
+// buttons around it.
+func urlPrimary(text, link string) gotdbot.InlineKeyboardButton {
+	btn := url(text, link)
+	btn.Style = gotdbot.ButtonStylePrimary{}
+	return btn
+}
+
 var CloseBtn = cb("Close", "vcplay_close")
 var HomeBtn = cb("Home", "help_back")
 var HelpBtn = cb("Help", "help_all")
@@ -192,8 +202,8 @@ func ControlButtons(mode string) *gotdbot.ReplyMarkupInlineKeyboard {
 
 func AddMeMarkup(username string) *gotdbot.ReplyMarkupInlineKeyboard {
 
-	addMeBtn := url(
-		"Aᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ",
+	addMeBtn := urlPrimary(
+		"➕ Add me to your group",
 		fmt.Sprintf("https://t.me/%s?startgroup=true", username),
 	)
 
@@ -218,7 +228,7 @@ var StartBackBtn = cb("Back", "setup_back")
 // PrivateStartMarkup builds the keyboard shown for /start in a private chat.
 // Mirrors: Add to Group, Help & Commands, Support Chat / Updates, Setup Guide.
 func PrivateStartMarkup(username string) *gotdbot.ReplyMarkupInlineKeyboard {
-	addToGroupBtn := url("Add to Group", fmt.Sprintf("https://t.me/%s?startgroup=true", username))
+	addToGroupBtn := urlPrimary("➕ Add to Group", fmt.Sprintf("https://t.me/%s?startgroup=true", username))
 	supportBtn := url("Support Chat", config.SupportGroup)
 	updatesBtn := url("Updates", config.SupportChannel)
 
@@ -245,7 +255,7 @@ func GroupWelcomeMarkup() *gotdbot.ReplyMarkupInlineKeyboard {
 // GuideBackMarkup is shown on the setup guide screen: Add to Group (which
 // the guide text explicitly tells the user to tap), then Back and Close.
 func GuideBackMarkup(username string) *gotdbot.ReplyMarkupInlineKeyboard {
-	addToGroupBtn := url("Add to Group", fmt.Sprintf("https://t.me/%s?startgroup=true", username))
+	addToGroupBtn := urlPrimary("➕ Add to Group", fmt.Sprintf("https://t.me/%s?startgroup=true", username))
 	return &gotdbot.ReplyMarkupInlineKeyboard{
 		Rows: [][]gotdbot.InlineKeyboardButton{
 			{addToGroupBtn},

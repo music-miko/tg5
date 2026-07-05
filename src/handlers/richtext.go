@@ -10,6 +10,7 @@ package handlers
 
 import (
 	"fmt"
+	"strings"
 
 	td "github.com/AshokShau/gotdbot"
 )
@@ -36,6 +37,22 @@ import (
 // currently a photo message (e.g. the private /start message), the photo
 // message has to be deleted and replaced with a real text message; see
 // promoteToRich below.
+//
+// A second, easy-to-miss difference from parse_mode=HTML: plain "\n"
+// characters in ordinary HTML messages render as line breaks, but Rich
+// HTML follows real HTML whitespace rules and collapses raw newlines, so
+// text built with "\n" (like every handler in this package does) comes out
+// as one run-together line instead of the intended multi-line layout.
+// injectLineBreaks below inserts an explicit <br> before each "\n" so the
+// output keeps the same line breaks it had under parse_mode=HTML.
+
+// injectLineBreaks inserts a <br> before every newline in htmlText, since
+// Rich HTML (unlike legacy parse_mode=HTML) treats a bare "\n" as
+// insignificant whitespace and collapses it instead of rendering a line
+// break.
+func injectLineBreaks(htmlText string) string {
+	return strings.ReplaceAll(htmlText, "\n", "<br>\n")
+}
 
 // richHTML wraps Telegram Rich HTML markup into a sendable InputRichMessage.
 // DetectAutomaticBlocks lets Telegram auto-linkify plain URLs, @mentions,
@@ -43,7 +60,7 @@ import (
 func richHTML(htmlText string) *td.InputRichMessage {
 	return &td.InputRichMessage{
 		DetectAutomaticBlocks: true,
-		Source:                td.RichMessageSourceHtml{Text: htmlText},
+		Source:                td.RichMessageSourceHtml{Text: injectLineBreaks(htmlText)},
 	}
 }
 

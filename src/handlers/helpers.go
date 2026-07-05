@@ -105,10 +105,25 @@ func coalesce(a, b string) string {
 	return b
 }
 
-// truncate truncates a string to a maximum length.
+// truncate truncates a string to at most max runes, appending an ellipsis
+// when it cuts anything off.
+//
+// The old byte-slice version (s[:max]) could slice a multi-byte UTF-8
+// rune in half whenever a title/username contained non-ASCII characters
+// (accents, CJK, emoji, ...), which corrupts the string into invalid UTF-8.
+// That's harmless in a plain-text message (Telegram just shows a
+// replacement glyph), but a Rich Message is parsed as structured markup, so
+// an invalid byte sequence there can throw off parsing of everything after
+// it in the same block (e.g. a <table> row in /yt, /queue) — this is the
+// "misrendered rich text" report. Truncating by rune keeps the output valid
+// UTF-8 no matter what the input contains.
 func truncate(s string, max int) string {
-	if len(s) <= max {
+	r := []rune(s)
+	if len(r) <= max {
 		return s
 	}
-	return s[:max]
+	if max <= 1 {
+		return string(r[:max])
+	}
+	return string(r[:max-1]) + "…"
 }

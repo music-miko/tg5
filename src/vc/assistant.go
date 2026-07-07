@@ -302,7 +302,7 @@ func (a *Assistant) stopCall(chatId int64, banned bool) error {
 	if banned || inputGroupCall == nil {
 		return nil
 	}
-	_, err := a.App.PhoneLeaveGroupCall(inputGroupCall, 0)
+	_, err = a.App.PhoneLeaveGroupCall(inputGroupCall, 0)
 	return err
 }
 

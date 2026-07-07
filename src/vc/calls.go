@@ -96,6 +96,17 @@ func (c *TelegramCalls) GetGroupAssistant(chatID int64) (*Assistant, int, error)
 	if !ok {
 		return nil, -1, fmt.Errorf("no ntgcalls instance was found for client index %d", clientIndex)
 	}
+	if !call.IsHealthy() {
+		// The native engine behind this assistant has already timed out on
+		// a prior call (see Assistant.markUnhealthy) - every native call
+		// routed to it from here on would just time out again in ~15s.
+		// Fail immediately with a clear message instead of making the user
+		// wait through another doomed attempt.
+		return nil, clientIndex, fmt.Errorf(
+			"assistant %d is temporarily unavailable (unresponsive for %s) - please try again in a moment: %w",
+			clientIndex, call.UnhealthySince(), ErrAssistantUnhealthy,
+		)
+	}
 	return call, clientIndex, nil
 }
 

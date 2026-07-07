@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"ashokshau/tgmusic/src/vc/ntgcalls"
@@ -50,6 +52,71 @@ type Assistant struct {
 	connectionStates map[int64]ntgcalls.ConnectionState
 
 	streamEndCallbacks []ntgcalls.StreamEndCallback
+
+	// chatLocks serializes native ntgcalls calls (Stop/Play/Calls...) per
+	// chatId. Without this, e.g. the /stop handler's stopCall() and an
+	// incoming GroupCallDiscarded update's onGroupCall() can both fire
+	// binding.Stop(chatId) for the same chat at almost the same time - two
+	// concurrent native calls racing on the same chat inside the engine.
+	// That race is the most likely trigger for the native deadlock seen in
+	// production (dozens of goroutines permanently stuck in
+	// ntgcalls.(*Client).Stop/Calls -> Future.wait()). Holding this lock for
+	// the duration of a native call for a given chatId makes that race
+	// impossible from the Go side.
+	chatLocks sync.Map // map[int64]*sync.Mutex
+
+	// unhealthy is set once any native call on this assistant's binding
+	// times out (see ntgcalls.ErrNativeTimeout). Once the native engine for
+	// a *Client wedges, every future call sharing it times out the same
+	// way, so there is no point routing more chats to it - callers should
+	// check IsHealthy() and fail fast with a clear error instead of hanging
+	// for nativeCallTimeout on every attempt.
+	unhealthy      atomic.Bool
+	unhealthySince atomic.Int64 // unix nanos, valid when unhealthy is true
+}
+
+// ErrAssistantUnhealthy is wrapped into every error Play/stopCall return once
+// an assistant has been marked unhealthy (see markUnhealthy). Wrapping it
+// (rather than just formatting a string) lets callers like play.go's
+// classifyError use errors.Is to reliably detect "this chat is pinned to a
+// dead assistant" and rotate to a different one, instead of leaving the chat
+// stuck on the same wedged assistant until someone intervenes manually.
+var ErrAssistantUnhealthy = errors.New("assistant native engine is unresponsive")
+
+// lockChat returns an unlock func after acquiring the per-chat native-call
+// lock for chatId, creating it on first use.
+func (a *Assistant) lockChat(chatId int64) func() {
+	muAny, _ := a.chatLocks.LoadOrStore(chatId, &sync.Mutex{})
+	mu := muAny.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
+}
+
+// markUnhealthy records that a native call timed out on this assistant's
+// binding. It only logs once per unhealthy episode to avoid spamming logs
+// while a wedged engine keeps failing every subsequent call.
+func (a *Assistant) markUnhealthy(reason string) {
+	if a.unhealthy.CompareAndSwap(false, true) {
+		a.unhealthySince.Store(time.Now().UnixNano())
+		slog.Error("[Assistant] native engine marked unhealthy - it will refuse further calls until the process is restarted", "reason", reason)
+	}
+}
+
+// IsHealthy reports whether this assistant's native binding is still
+// believed to be responsive. Callers (e.g. GetGroupAssistant) should use
+// this to avoid routing new chats to an assistant whose engine has already
+// wedged.
+func (a *Assistant) IsHealthy() bool {
+	return !a.unhealthy.Load()
+}
+
+// UnhealthySince returns how long this assistant has been marked unhealthy,
+// or 0 if it is currently healthy.
+func (a *Assistant) UnhealthySince() time.Duration {
+	if !a.unhealthy.Load() {
+		return 0
+	}
+	return time.Since(time.Unix(0, a.unhealthySince.Load()))
 }
 
 func newAssistant(app *tg.Client) (*Assistant, error) {
@@ -69,7 +136,46 @@ func newAssistant(app *tg.Client) (*Assistant, error) {
 		a.self = self
 	}
 	a.handleUpdates()
+	go a.watchdog()
 	return a, nil
+}
+
+// watchdogGracePeriod is how long we let an assistant sit unhealthy before
+// forcing a process restart. It's deliberately not instant: a brief native
+// hiccup that resolves on its own (WaitTimeout(false) doesn't mean the
+// native call is dead forever, just that it didn't answer within
+// nativeCallTimeout) shouldn't restart the whole bot. But once an engine has
+// been unresponsive for this long, every chat routed to it is stuck anyway
+// (see markUnhealthy), and the process previously seen doing this in
+// production eventually crashed outright (SIGSEGV) after piling up hundreds
+// of permanently-blocked goroutines over multiple hours. Restarting
+// promptly and cleanly is strictly better than limping along silently
+// broken until that happens.
+const watchdogGracePeriod = 45 * time.Second
+
+// watchdog polls this assistant's health and, if it stays unhealthy past
+// watchdogGracePeriod, logs loudly and exits the process so a process
+// supervisor (systemd, docker, etc. with a restart policy) can bring up a
+// fresh instance with a clean native engine. It does not attempt to repair
+// the engine in-process: the native ntgcalls Client that wedged may itself
+// be unsafe to call again (its own teardown, Free(), routes through the
+// same stuck native call queue), so the only reliably clean fix is a full
+// process restart.
+func (a *Assistant) watchdog() {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		if !a.unhealthy.Load() {
+			continue
+		}
+		since := a.UnhealthySince()
+		if since < watchdogGracePeriod {
+			continue
+		}
+		slog.Error("[Assistant] native engine unresponsive past grace period, restarting process",
+			"unhealthy_for", since, "grace_period", watchdogGracePeriod)
+		os.Exit(1)
+	}
 }
 
 func (a *Assistant) OnStreamEnd(callback ntgcalls.StreamEndCallback) {
@@ -85,7 +191,12 @@ func (a *Assistant) Close() {
 // present in binding.Calls() while its underlying transport is dead - see
 // the connectionStates field comment for why.
 func (a *Assistant) isCallHealthy(chatId int64) bool {
-	if a.binding.Calls()[chatId] == nil {
+	calls, err := a.binding.CallsTimeout(ntgcalls.DefaultCallTimeout())
+	if err != nil {
+		a.markUnhealthy(fmt.Sprintf("Calls() timed out while checking chat_id=%d", chatId))
+		return false
+	}
+	if calls[chatId] == nil {
 		return false
 	}
 	a.mu.RLock()
@@ -95,7 +206,20 @@ func (a *Assistant) isCallHealthy(chatId int64) bool {
 }
 
 func (a *Assistant) Play(ctx context.Context, chatId int64, mediaDescription ntgcalls.MediaDescription) error {
-	if a.binding.Calls()[chatId] != nil {
+	if !a.IsHealthy() {
+		return fmt.Errorf("assistant is unavailable (native engine unresponsive for %s), try again shortly or contact an admin: %w", a.UnhealthySince().Round(time.Second), ErrAssistantUnhealthy)
+	}
+
+	unlock := a.lockChat(chatId)
+	defer unlock()
+
+	existingCalls, err := a.binding.CallsTimeout(ntgcalls.DefaultCallTimeout())
+	if err != nil {
+		a.markUnhealthy(fmt.Sprintf("Calls() timed out at start of Play for chat_id=%d", chatId))
+		return fmt.Errorf("assistant is unavailable (native engine unresponsive), try again shortly: %w", ErrAssistantUnhealthy)
+	}
+
+	if existingCalls[chatId] != nil {
 		if a.isCallHealthy(chatId) {
 			slog.Info("[Play] existing healthy call found, reusing connection (no rejoin)", "chat_id", chatId)
 			err := a.binding.SetStreamSources(chatId, ntgcalls.CaptureStream, mediaDescription)
@@ -120,6 +244,10 @@ func (a *Assistant) Play(ctx context.Context, chatId int64, mediaDescription ntg
 			"chat_id", chatId, "last_state_known", known, "last_state", lastState)
 
 		if err := a.binding.Stop(chatId); err != nil {
+			if errors.Is(err, ntgcalls.ErrNativeTimeout) {
+				a.markUnhealthy(fmt.Sprintf("Stop() timed out forcing teardown of stale call for chat_id=%d", chatId))
+				return err
+			}
 			slog.Warn("[Play] Stop on stale call failed, continuing to rejoin anyway", "chat_id", chatId, "error", err)
 		}
 		a.mu.Lock()
@@ -129,6 +257,9 @@ func (a *Assistant) Play(ctx context.Context, chatId int64, mediaDescription ntg
 
 	slog.Info("[Play] no existing healthy call, connecting fresh", "chat_id", chatId)
 	if err := a.connectCall(ctx, chatId, mediaDescription, ""); err != nil {
+		if errors.Is(err, ntgcalls.ErrNativeTimeout) {
+			a.markUnhealthy(fmt.Sprintf("connectCall timed out for chat_id=%d", chatId))
+		}
 		slog.Warn("[Play] connectCall failed", "chat_id", chatId, "error", err)
 		return err
 	}
@@ -147,6 +278,10 @@ func (a *Assistant) Play(ctx context.Context, chatId int64, mediaDescription ntg
 }
 
 func (a *Assistant) stopCall(chatId int64, banned bool) error {
+	if !a.IsHealthy() {
+		return fmt.Errorf("assistant is unavailable (native engine unresponsive for %s): %w", a.UnhealthySince().Round(time.Second), ErrAssistantUnhealthy)
+	}
+
 	a.mu.Lock()
 	a.presentations = stdRemove(a.presentations, chatId)
 	delete(a.pendingConnections, chatId)
@@ -154,7 +289,13 @@ func (a *Assistant) stopCall(chatId int64, banned bool) error {
 	inputGroupCall := a.inputGroupCalls[chatId]
 	a.mu.Unlock()
 
-	if err := a.binding.Stop(chatId); err != nil {
+	unlock := a.lockChat(chatId)
+	err := a.binding.Stop(chatId)
+	unlock()
+	if err != nil {
+		if errors.Is(err, ntgcalls.ErrNativeTimeout) {
+			a.markUnhealthy(fmt.Sprintf("Stop() timed out in stopCall for chat_id=%d", chatId))
+		}
 		return err
 	}
 
@@ -537,13 +678,18 @@ func (a *Assistant) onGroupCallParticipants(m tg.Update, _ *tg.Client) error {
 			pending := a.pendingConnections[chatId]
 			a.mu.RUnlock()
 			if pending != nil {
+				unlock := a.lockChat(chatId)
 				err = a.connectCall(
 					context.Background(),
 					chatId,
 					pending.MediaDescription,
 					pending.Payload,
 				)
+				unlock()
 				if err != nil {
+					if errors.Is(err, ntgcalls.ErrNativeTimeout) {
+						a.markUnhealthy(fmt.Sprintf("connectCall timed out reconnecting pending_call for chat_id=%d", chatId))
+					}
 					a.App.Log.Warnf("failed to reconnect pending_call: %v", err)
 				}
 				a.mu.Lock()
@@ -634,7 +780,12 @@ func (a *Assistant) onGroupCall(m tg.Update, _ *tg.Client) error {
 			a.mu.Lock()
 			delete(a.inputGroupCalls, chatID)
 			a.mu.Unlock()
-			_ = a.binding.Stop(chatID)
+			unlock := a.lockChat(chatID)
+			err := a.binding.Stop(chatID)
+			unlock()
+			if err != nil && errors.Is(err, ntgcalls.ErrNativeTimeout) {
+				a.markUnhealthy(fmt.Sprintf("Stop() timed out handling GroupCallDiscarded for chat_id=%d", chatID))
+			}
 			return nil
 		}
 	}

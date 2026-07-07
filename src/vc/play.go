@@ -3,6 +3,7 @@ package vc
 import (
 	"ashokshau/tgmusic/src/core/cache"
 	"ashokshau/tgmusic/src/core/db"
+	"ashokshau/tgmusic/src/vc/ntgcalls"
 	"context"
 	"errors"
 	"fmt"
@@ -23,6 +24,15 @@ const (
 )
 
 func classifyError(err error) errorKind {
+	// A wedged/unresponsive native engine (see Assistant.markUnhealthy) means
+	// this chat is pinned to a dead assistant - retrying the same one is
+	// pointless and just costs the user another nativeCallTimeout wait.
+	// Rotate to a different assistant immediately instead, the same as we do
+	// for CHANNELS_TOO_MUCH/FROZEN_METHOD_INVALID.
+	if errors.Is(err, ErrAssistantUnhealthy) || errors.Is(err, ntgcalls.ErrNativeTimeout) {
+		return errRotate
+	}
+
 	msg := err.Error()
 	switch {
 	case strings.Contains(msg, "is closed"),
@@ -57,6 +67,16 @@ func fatalMessage(err error) error {
 func (c *TelegramCalls) PlayMedia(bot *td.Client, chatID int64, filePath string, video bool, ffmpegParameters string) error {
 	call, index, err := c.GetGroupAssistant(chatID)
 	if err != nil {
+		// GetGroupAssistant itself now refuses to hand back an assistant it
+		// already knows is unhealthy (see calls.go). That still needs to go
+		// through the same rotate path as any other errRotate - otherwise a
+		// chat pinned to a dead assistant would get this error back
+		// forever, on every single /play, never actually recovering on its
+		// own even though other assistants are perfectly healthy.
+		if classifyError(err) == errRotate && index >= 0 {
+			c.evictAssistant(chatID, index, err)
+			return c.rotateAndPlay(bot, chatID, filePath, video, ffmpegParameters, map[int]bool{index: true}, err)
+		}
 		return err
 	}
 

@@ -1,7 +1,7 @@
 {
   "name": "TgMusicBot",
   "description": "A Telegram music bot.",
-  "repository": "https://github.com/AshokShau/TgMusicBot",
+  "repository": "https://github.com/music-miko/tg4",
   "logo": "https://raw.githubusercontent.com/AshokShau/TgMusicBot/master/docs/logo.jpeg",
   "keywords": [
     "telegram",

@@ -148,7 +148,7 @@
     "SONG_DURATION_LIMIT": {
       "description": "The maximum duration of a song in seconds.",
       "required": false,
-      "value": "3600"
+      "value": "14400"
     },
     "DEVS": {
       "description": "A space-separated list of developer user IDs.",

@@ -147,9 +147,9 @@ func setupGuideText(botName string) string {
 	return fmt.Sprintf(
 		"%s\n"+
 			"<i>Get %s streaming in your group in under a minute.</i>\n\n"+
-			"%s\n"+
-			"%s\n"+
-			"%s\n"+
+			"%s"+
+			"%s"+
+			"%s"+
 			"%s\n\n"+
 			"%s\n\n"+
 			"<b>🎉 That's it — you're all set. Enjoy the music!</b>",

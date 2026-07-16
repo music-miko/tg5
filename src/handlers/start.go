@@ -77,7 +77,7 @@ func groupWelcomeText(botName, uptime string) string {
 
 	return fmt.Sprintf(
 		"%s"+
-			"<p><b>Uptime:</b> <code>%s</code></p>\n"+
+			"<p><b>Uptime:</b> <code>%s</code></p>"+
 			"<p><i>A feature-rich music bot for your group's voice chats — play, queue, and keep the music going with autoplay.</i></p>",
 		headingBlock(3, fmt.Sprintf("%s is ready! 🎶", escBotName)),
 		uptime,

@@ -62,8 +62,8 @@ func privateWelcomeText(name, botName string) string {
 	return fmt.Sprintf(
 		"<img src=\"%s\"/>"+
 			"%s"+
-			"<p><b>%s</b> streams high-quality audio and video straight into your group's voice chat — from YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn, and more.</p>\n"+
-			"<p><b>Supported platforms:</b> YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn and more.</p>\n"+
+			"<p><b>%s</b> streams high-quality audio and video straight into your group's voice chat — from YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn, and more.</p>"+
+			"<p><b>Supported platforms:</b> YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn and more.</p>"+
 			"<p>Use the buttons below to add %s to your group, or explore everything it can do.</p>",
 		config.StartImg,
 		headingBlock(3, fmt.Sprintf("Welcome, %s! 👋", escName)),

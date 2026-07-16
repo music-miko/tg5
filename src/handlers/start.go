@@ -56,24 +56,30 @@ func pingHandler(c *td.Client, m *td.Message) error {
 // always a plain in-place edit; there's no photo/caption message to delete
 // and recreate along the way.
 func privateWelcomeText(name, botName string) string {
+	escName := html.EscapeString(name)
+	escBotName := html.EscapeString(botName)
+
 	return fmt.Sprintf(
 		"<img src=\"%s\"/>\n"+
 			"%s\n"+
-			"Hello, %s. %s is a music bot for Telegram — stream from YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn and more, right inside any group voice chat.\n\n"+
-			"Use the buttons below to add me to a group or explore what I can do.",
+			"<p><b>%s</b> streams high-quality audio and video straight into your group's voice chat — from YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn, and more.</p>\n\n"+
+			"<p><b>Supported platforms:</b> YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn and more.</p>\n\n"+
+			"<p>Use the buttons below to add %s to your group, or explore everything it can do.</p>",
 		config.StartImg,
-		headingBlock(3, fmt.Sprintf("👋 Welcome to %s", html.EscapeString(botName))),
-		html.EscapeString(name), html.EscapeString(botName),
+		headingBlock(3, fmt.Sprintf("Welcome, %s! 👋", escName)),
+		escBotName, escBotName,
 	)
 }
 
 // groupWelcomeText builds the group-chat /start body as Rich HTML.
 func groupWelcomeText(botName, uptime string) string {
+	escBotName := html.EscapeString(botName)
+
 	return fmt.Sprintf(
 		"%s\n"+
-			"<b>Uptime:</b> <code>%s</code>\n\n"+
-			"A music player with support for YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn and more.",
-		headingBlock(3, fmt.Sprintf("👋 %s is ready", html.EscapeString(botName))),
+			"<p><b>Uptime:</b> <code>%s</code></p>\n\n"+
+			"<p><i>A feature-rich music bot for your group's voice chats — play, queue, and keep the music going with autoplay.</i></p>",
+		headingBlock(3, fmt.Sprintf("%s is ready! 🎶", escBotName)),
 		uptime,
 	)
 }

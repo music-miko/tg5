@@ -52,6 +52,7 @@ var AdminBtn = cb("Admins", "help_admin")
 var OwnerBtn = cb("Owner", "help_owner")
 var DevsBtn = cb("Devs", "help_devs")
 var PlaylistBtn = cb("Playlist", "help_playlist")
+var AutoplayBtn = cb("Autoplay", "help_autoplay")
 
 func SupportKeyboard() *gotdbot.ReplyMarkupInlineKeyboard {
 
@@ -125,8 +126,8 @@ func HelpMenuKeyboard() *gotdbot.ReplyMarkupInlineKeyboard {
 	return &gotdbot.ReplyMarkupInlineKeyboard{
 		Rows: [][]gotdbot.InlineKeyboardButton{
 			{UserBtn, AdminBtn, OwnerBtn},
-			{PlaylistBtn, DevsBtn, CloseBtn},
-			{HomeBtn},
+			{PlaylistBtn, DevsBtn, AutoplayBtn},
+			{HomeBtn, CloseBtn},
 		},
 	}
 }

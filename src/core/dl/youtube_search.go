@@ -257,7 +257,7 @@ func getYouTubePlaylist(ctx context.Context, playlistID string) (utils.PlatformT
 	return buildTrackList(videos, mapYTVideo), nil
 }
 
-func getYouTubeMixPlaylist(ctx context.Context, playlistID string) (utils.PlatformTracks, error) {
+func GetYouTubeMixPlaylist(ctx context.Context, playlistID string) (utils.PlatformTracks, error) {
 	resp, err := ytPost(ctx, "/youtubei/v1/next", map[string]any{"playlistId": playlistID})
 	if err != nil {
 		return utils.PlatformTracks{}, err

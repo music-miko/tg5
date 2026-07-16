@@ -19,7 +19,7 @@ import (
 )
 
 // Version is the current release version of the bot.
-const Version = "1.0.0"
+const Version = "1.1.0"
 
 var (
 	ApiId               = getEnvInt32("API_ID", 0)

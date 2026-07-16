@@ -12,8 +12,6 @@ import (
 	"fmt"
 	"strings"
 
-	"ashokshau/tgmusic/config"
-
 	td "github.com/AshokShau/gotdbot"
 )
 
@@ -33,12 +31,14 @@ import (
 // InputRichMessage + sendRichMessage/editMessageText instead, so it
 // actually renders.
 //
-// One hard constraint: rich blocks (tables, details, headings, ...) can
-// only live in a message's *text*, never in a media caption — Telegram
-// has no "rich caption". Anywhere a rich block needs to appear in what is
-// currently a photo message (e.g. the private /start message), the photo
-// message has to be deleted and replaced with a real text message; see
-// promoteToRich below.
+// One hard constraint worth knowing: rich blocks (tables, details,
+// headings, ...) can only live in a message's *text*, never in a media
+// caption — Telegram has no "rich caption". That's why the private /start
+// screen embeds its welcome image as an in-message <img> tag instead of
+// being sent as a separate photo with a caption: keeping it as ordinary
+// Rich Message text means every screen it can navigate to (help, setup
+// guide, and back) is a plain in-place edit, with nothing ever deleted
+// and resent.
 //
 // A second, easy-to-miss difference from parse_mode=HTML: plain "\n"
 // characters in ordinary HTML messages render as line breaks, but Rich
@@ -83,8 +83,7 @@ func replyRich(c *td.Client, m *td.Message, htmlText string, markup td.ReplyMark
 }
 
 // editRich replaces msg's own content with rich content in place. Only
-// valid when msg is already a text/rich message — a media caption can't be
-// turned into rich content this way, use promoteToRich for that.
+// valid when msg is already a text/rich message.
 func editRich(c *td.Client, msg *td.Message, htmlText string, markup td.ReplyMarkup) (*td.Message, error) {
 	return msg.EditContent(c, &td.InputMessageRichMessage{Message: richHTML(htmlText)}, markup)
 }
@@ -95,31 +94,6 @@ func editRich(c *td.Client, msg *td.Message, htmlText string, markup td.ReplyMar
 func editRichByID(c *td.Client, chatId, messageId int64, htmlText string, markup td.ReplyMarkup) (*td.Message, error) {
 	content := &td.InputMessageRichMessage{Message: richHTML(htmlText)}
 	return c.EditMessageText(chatId, content, messageId, &td.EditMessageTextOpts{ReplyMarkup: markup})
-}
-
-// promoteToRich deletes the message at chatId/messageId and sends a fresh
-// rich message with htmlText in its place. Use this when the existing
-// message is a photo (or other media) whose caption needs to show rich
-// blocks like tables or collapsible details, since captions can't carry
-// them — the message has to become a real text message instead.
-func promoteToRich(c *td.Client, chatId, messageId int64, htmlText string, markup td.ReplyMarkup) (*td.Message, error) {
-	_ = c.DeleteMessages(chatId, []int64{messageId}, &td.DeleteMessagesOpts{Revoke: true})
-	return sendRich(c, chatId, htmlText, markup)
-}
-
-// demoteToPhoto deletes the message at chatId/messageId and sends a fresh
-// photo message (config.StartImg) with htmlText as its caption. This is the
-// reverse of promoteToRich: use it when navigating back from a promoted
-// rich-text screen to a photo-based one (e.g. the /start welcome image),
-// since a plain caption can't carry rich blocks and a text message can't be
-// turned into a photo message in place — it has to be recreated.
-func demoteToPhoto(c *td.Client, chatId, messageId int64, htmlText string, markup td.ReplyMarkup) (*td.Message, error) {
-	_ = c.DeleteMessages(chatId, []int64{messageId}, &td.DeleteMessagesOpts{Revoke: true})
-	return c.SendPhoto(chatId, td.InputFileRemote{Id: config.StartImg}, &td.SendPhotoOpts{
-		ParseMode:   "HTML",
-		Caption:     htmlText,
-		ReplyMarkup: markup,
-	})
 }
 
 // headingBlock renders a Rich HTML heading, clamped to the supported h1-h6 range.

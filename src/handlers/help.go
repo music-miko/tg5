@@ -52,6 +52,7 @@ func getHelpCategories() map[string]struct {
 				[2]string{"/play [song]", "Searches and plays a track in the group's voice chat. Accepts a search query or a direct link (YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn)."},
 				[2]string{"/vplay [song]", "Same as /play, but streams video instead of audio."},
 			)) + "\n" +
+				"<i>Admins also have /fplay and /fvplay to jump the queue, plus /autoplay — see Admin Commands.</i>\n" +
 				detailsBlock("Utilities", cmdTable(
 					[2]string{"/start", "Shows the welcome message and setup options."},
 					[2]string{"/privacy", "Shows the bot's privacy policy."},
@@ -67,6 +68,9 @@ func getHelpCategories() map[string]struct {
 					[2]string{"/pause", "Pauses playback without clearing the queue."},
 					[2]string{"/resume", "Resumes playback after a pause."},
 					[2]string{"/seek [seconds]", "Jumps to a specific position in the current track."},
+					[2]string{"/fplay [song]", "Same as /play, but cuts straight to the front of the queue."},
+					[2]string{"/fvplay [song]", "Same as /vplay, but cuts straight to the front of the queue."},
+					[2]string{"/autoplay", "Toggles autoplay — keeps a related track playing once the queue is empty."},
 				)) + "\n" +
 				detailsBlock("Queue Management", cmdTable(
 					[2]string{"/remove [position]", "Removes a specific track from the queue by its position number."},
@@ -110,41 +114,19 @@ func getHelpCategories() map[string]struct {
 }
 
 // helpCallbackHandler handles the /help menu's buttons. It's only ever
-// reached from the private-chat /start photo message (groups don't wire up
-// these buttons).
+// reached from the private-chat /start screen (groups don't wire up these
+// buttons).
 //
-// The photo is only ever shown on the very first screen (/start) and the
-// very last one you can return to ("Home"). The moment "Help" is pressed,
-// the photo is dropped in favor of a genuine rich text message — every
-// screen after that (the category menu, and each category page) is plain
-// rich text, so all navigation between them is a simple in-place edit with
-// no delete/resend involved:
-//   - help_all: if we're still on the photo, promote to a rich-text
-//     category menu (delete + send, unavoidable since a caption can't
-//     become a rich message); otherwise just edit the existing rich
-//     message in place.
-//   - a category page: always reached from the already-image-free category
-//     menu, so this is a plain edit in place (the isPhoto branch is kept
-//     only as a defensive fallback).
-//   - help_back ("Home"): always leaves rich text and returns to the photo
-//     welcome screen, which means deleting the rich message and sending a
-//     fresh photo — the one delete/resend that can't be avoided, since
-//     Telegram has no way to turn a text message into a photo message in
-//     place.
+// /start, the category menu, each category page, and "Home" are all Rich
+// Messages — the welcome image lives in-message via <img> rather than as a
+// separate photo caption — so every transition here is a plain in-place
+// edit. Nothing is ever deleted and resent.
 func helpCallbackHandler(c *td.Client, cb *td.UpdateNewCallbackQuery) error {
 	data := cb.DataString()
 
 	user, err := c.GetUser(cb.SenderUserId)
 	if err != nil {
 		user = &td.User{FirstName: "User", Id: cb.SenderUserId}
-	}
-
-	msg, _ := cb.GetMessage(c)
-	isPhoto := false
-	if msg != nil && msg.Content != nil {
-		if _, ok := msg.Content.(*td.MessagePhoto); ok {
-			isPhoto = true
-		}
 	}
 
 	helpCategories := getHelpCategories()
@@ -156,38 +138,21 @@ func helpCallbackHandler(c *td.Client, cb *td.UpdateNewCallbackQuery) error {
 			headingBlock(3, fmt.Sprintf("📖 %s — Help Menu", html.EscapeString(c.Me.FirstName))),
 			html.EscapeString(user.FirstName),
 		)
-
-		if isPhoto {
-			_, err := promoteToRich(c, cb.ChatId, cb.MessageId, response, core.HelpMenuKeyboard())
-			return err
-		}
 		_, err := editRichByID(c, cb.ChatId, cb.MessageId, response, core.HelpMenuKeyboard())
 		return err
 	}
 
 	if strings.Contains(data, "help_back") {
 		_ = cb.Answer(c, 0, false, "Returning to main menu...", "")
-		response := fmt.Sprintf("👋 Hello, %s.\n\n%s is a music bot for Telegram — stream from YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn and more, right inside any group voice chat.\n\nUse /help to explore all commands.", html.EscapeString(user.FirstName), html.EscapeString(c.Me.FirstName))
+		response := privateWelcomeText(user.FirstName, c.Me.FirstName)
 		markup := core.PrivateStartMarkup(c.Me.Usernames.EditableUsername)
-
-		if isPhoto {
-			// Already on the photo (e.g. Home pressed twice) — nothing to
-			// recreate, just refresh the caption in place.
-			_, _ = cb.EditMessageCaption(c, response, &td.EditCaptionOpts{ReplyMarkup: markup, ParseMode: "HTML"})
-			return nil
-		}
-		_, err := demoteToPhoto(c, cb.ChatId, cb.MessageId, response, markup)
+		_, err := editRichByID(c, cb.ChatId, cb.MessageId, response, markup)
 		return err
 	}
 
 	if category, ok := helpCategories[data]; ok {
 		_ = cb.Answer(c, 0, false, category.Title, "")
 		response := fmt.Sprintf("%s\n\n%s\n\n<i>Use the buttons below to go back.</i>", headingBlock(2, category.Title), category.Content)
-
-		if isPhoto {
-			_, err := promoteToRich(c, cb.ChatId, cb.MessageId, response, category.Markup)
-			return err
-		}
 		_, err := editRichByID(c, cb.ChatId, cb.MessageId, response, category.Markup)
 		return err
 	}

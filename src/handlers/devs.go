@@ -16,6 +16,7 @@ import (
 
 	"ashokshau/tgmusic/src/core/cache"
 	"ashokshau/tgmusic/src/core/db"
+	"ashokshau/tgmusic/src/utils"
 	"ashokshau/tgmusic/src/vc"
 
 	td "github.com/AshokShau/gotdbot"
@@ -30,49 +31,44 @@ func activeVcHandler(c *td.Client, m *td.Message) error {
 	}
 
 	activeChats := cache.ChatCache.GetActiveChats()
+
+	body := headingBlock(3, "🎵 Active Voice Chats")
+
 	if len(activeChats) == 0 {
-		_, err := m.ReplyText(c, "No active chats found.", nil)
+		body += "\n<blockquote><b>🔇 No active chats:</b> there are currently no active voice or video chats.</blockquote>"
+		_, err := replyRich(c, m, body, nil)
 		return err
 	}
 
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("🎵 <b>Active Voice Chats</b> (%d):\n\n", len(activeChats)))
+	var table strings.Builder
+	table.WriteString("<table bordered striped>")
+	table.WriteString("<tr><th align=\"center\">#</th><th align=\"center\">Chat ID</th><th align=\"center\">Queue</th><th align=\"left\">Now Playing</th></tr>")
 
-	for _, chatID := range activeChats {
+	for i, chatID := range activeChats {
 		queueLength := cache.ChatCache.GetQueueLength(chatID)
 		currentSong := cache.ChatCache.GetPlayingTrack(chatID)
 
-		var songInfo string
+		var nowPlaying string
 		if currentSong != nil {
-			songInfo = fmt.Sprintf(
-				"🎶 <b>Now Playing:</b> <a href='%s'>%s</a> (%ds)",
-				html.EscapeString(currentSong.URL),
-				html.EscapeString(currentSong.Name),
-				currentSong.Duration,
-			)
+			trackURL := html.EscapeString(currentSong.URL)
+			if trackURL == "" {
+				trackURL = config.SupportGroup
+			}
+			nowPlaying = fmt.Sprintf("<a href='%s'>%s</a> (%s)", trackURL, html.EscapeString(currentSong.Name), utils.SecToMin(currentSong.Duration))
 		} else {
-			songInfo = "🔇 No song playing."
+			nowPlaying = "<i>🔇 No song playing.</i>"
 		}
 
-		sb.WriteString(fmt.Sprintf(
-			"➤ <b>Chat ID:</b> <code>%d</code>\n📌 <b>Queue Size:</b> %d\n%s\n\n",
-			chatID,
-			queueLength,
-			songInfo,
-		))
+		fmt.Fprintf(&table, "<tr><td align=\"center\">%d</td><td align=\"center\"><code>%d</code></td><td align=\"center\">%d</td><td align=\"left\">%s</td></tr>",
+			i+1, chatID, queueLength, nowPlaying)
 	}
+	table.WriteString("</table>")
 
-	text := sb.String()
-	if len(text) > 4096 {
-		text = fmt.Sprintf("🎵 <b>Active Voice Chats</b> (%d)", len(activeChats))
-	}
+	body += fmt.Sprintf("\nThere are currently <b>%d</b> active voice/video chat(s) running.\n\n", len(activeChats))
+	body += detailsBlock("📊 Click to show active chats", table.String())
 
-	_, err := m.ReplyText(c, text, &td.SendTextMessageOpts{ParseMode: "HTML", DisableWebPagePreview: true})
-	if err != nil {
-		return err
-	}
-
-	return nil
+	_, err := replyRich(c, m, body, nil)
+	return err
 }
 
 // Handles the /clearass command to remove all assistant assignments

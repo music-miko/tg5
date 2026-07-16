@@ -164,6 +164,7 @@ func (c *TelegramCalls) Stop(chatId int64, banned bool) error {
 	}
 
 	c.cancelPrefetch(chatId)
+	cache.ChatCache.SetAutoplay(chatId, false)
 	cache.ChatCache.ClearChat(chatId)
 	err = call.stopCall(chatId, banned)
 	if err != nil {

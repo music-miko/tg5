@@ -30,7 +30,7 @@ func playHandler(c *td.Client, m *td.Message) error {
 		return td.EndGroups
 	}
 
-	return handlePlay(c, m, false)
+	return handlePlay(c, m, false, false)
 }
 
 // vPlayHandler handles the /vplay command.
@@ -43,14 +43,45 @@ func vPlayHandler(c *td.Client, m *td.Message) error {
 		_, _ = m.ReplyText(c, "🎥 Video playback is currently disabled.\n\nAs more people use the bot, video streaming can sometimes cause lag and reduce music quality in voice chats. To ensure a smooth listening experience for everyone, this feature has been turned off for now.\n\nThanks for your support and understanding ❤️", nil)
 		return td.EndGroups
 	}
-	return handlePlay(c, m, true)
+	return handlePlay(c, m, true, false)
 }
 
-func handlePlay(c *td.Client, m *td.Message, isVideo bool) error {
+// fPlayHandler handles the /fplay command: same as /play, but jumps the
+// track straight to the front of the queue (right after whatever's
+// currently playing) instead of appending it to the end. Restricted to
+// admins/authorized users since it lets one person cut the line for
+// everyone else.
+func fPlayHandler(c *td.Client, m *td.Message) error {
+	if !adminMode(c, m) {
+		return td.EndGroups
+	}
+
+	return handlePlay(c, m, false, true)
+}
+
+// fVPlayHandler handles the /fvplay command: the force-play variant of
+// /vplay.
+func fVPlayHandler(c *td.Client, m *td.Message) error {
+	if !adminMode(c, m) {
+		return td.EndGroups
+	}
+
+	if !config.EnableVideoPlayback {
+		_, _ = m.ReplyText(c, "🎥 Video playback is currently disabled.\n\nAs more people use the bot, video streaming can sometimes cause lag and reduce music quality in voice chats. To ensure a smooth listening experience for everyone, this feature has been turned off for now.\n\nThanks for your support and understanding ❤️", nil)
+		return td.EndGroups
+	}
+	return handlePlay(c, m, true, true)
+}
+
+// MaxQueueLength is the maximum number of tracks allowed in a single
+// chat's queue at once (including whatever's currently playing).
+const MaxQueueLength = 25
+
+func handlePlay(c *td.Client, m *td.Message, isVideo bool, force bool) error {
 	chatID := m.ChatId
 
-	if queueLen := cache.ChatCache.GetQueueLength(chatID); queueLen > 10 {
-		_, _ = m.ReplyText(c, "Queue is full (max 10 tracks). Use /end to clear.", nil)
+	if queueLen := cache.ChatCache.GetQueueLength(chatID); queueLen >= MaxQueueLength {
+		_, _ = m.ReplyText(c, fmt.Sprintf("Queue is full (max %d tracks). Use /end to clear it, or /remove to drop a specific track.", MaxQueueLength), nil)
 		return td.EndGroups
 	}
 
@@ -88,7 +119,7 @@ func handlePlay(c *td.Client, m *td.Message, isVideo bool) error {
 			return td.EndGroups
 		}
 
-		return handleMultipleTracks(c, m, updater, tracks, chatID, isVideo)
+		return handleMultipleTracks(c, m, updater, tracks, chatID, isVideo, force)
 	}
 
 	if match := utils.TelegramMessageRegex.FindStringSubmatch(input); match != nil {
@@ -122,7 +153,7 @@ func handlePlay(c *td.Client, m *td.Message, isVideo bool) error {
 	}
 
 	if isReply && isValidMedia(rMsg) {
-		return handleMedia(c, m, updater, rMsg, chatID, isVideo)
+		return handleMedia(c, m, updater, rMsg, chatID, isVideo, force)
 	}
 
 	wrapper := dl.NewDownloaderWrapper(input)
@@ -143,14 +174,14 @@ func handlePlay(c *td.Client, m *td.Message, isVideo bool) error {
 			return td.EndGroups
 		}
 
-		return handleUrl(c, m, updater, trackInfo, chatID, isVideo)
+		return handleUrl(c, m, updater, trackInfo, chatID, isVideo, force)
 	}
 
-	return handleTextSearch(c, m, updater, wrapper, chatID, isVideo)
+	return handleTextSearch(c, m, updater, wrapper, chatID, isVideo, force)
 }
 
 // handleMedia handles playing media from a message.
-func handleMedia(c *td.Client, m *td.Message, updater *td.Message, dlMsg *td.Message, chatId int64, isVideo bool) error {
+func handleMedia(c *td.Client, m *td.Message, updater *td.Message, dlMsg *td.Message, chatId int64, isVideo bool, force bool) error {
 	file, fileName := getFile(dlMsg)
 	if file == nil {
 		_, err := updater.EditText(c, "No valid media found in the message.", nil)
@@ -183,8 +214,19 @@ func handleMedia(c *td.Client, m *td.Message, updater *td.Message, dlMsg *td.Mes
 		Duration: dur, IsVideo: isVideo, Platform: utils.Telegram,
 	}
 
-	qLen := cache.ChatCache.AddSong(chatId, &saveCache)
+	var qLen int
+	if force {
+		qLen = cache.ChatCache.AddSongToFront(chatId, &saveCache)
+	} else {
+		qLen = cache.ChatCache.AddSong(chatId, &saveCache)
+	}
+
 	if qLen > 1 {
+		if force {
+			_ = vc.Calls.PlayNext(c, chatId)
+			_ = c.DeleteMessages(chatId, []int64{updater.Id}, &td.DeleteMessagesOpts{Revoke: true})
+			return nil
+		}
 		escURL := html.EscapeString(saveCache.URL)
 		escName := html.EscapeString(saveCache.Name)
 		escUser := html.EscapeString(saveCache.User)
@@ -236,7 +278,7 @@ func handleMedia(c *td.Client, m *td.Message, updater *td.Message, dlMsg *td.Mes
 }
 
 // handleTextSearch handles a text search for a song.
-func handleTextSearch(c *td.Client, m *td.Message, updater *td.Message, wrapper *dl.DownloaderWrapper, chatId int64, isVideo bool) error {
+func handleTextSearch(c *td.Client, m *td.Message, updater *td.Message, wrapper *dl.DownloaderWrapper, chatId int64, isVideo bool, force bool) error {
 	searchResult, err := wrapper.Search()
 	if err != nil {
 		_, err = updater.EditText(c, fmt.Sprintf("❌ Search failed: %s", err.Error()), nil)
@@ -254,25 +296,25 @@ func handleTextSearch(c *td.Client, m *td.Message, updater *td.Message, wrapper 
 		return err
 	}
 
-	return handleSingleTrack(c, m, updater, song, "", chatId, isVideo)
+	return handleSingleTrack(c, m, updater, song, "", chatId, isVideo, force)
 }
 
 // handleUrl handles a URL search for a song.
-func handleUrl(c *td.Client, m *td.Message, updater *td.Message, trackInfo utils.PlatformTracks, chatId int64, isVideo bool) error {
+func handleUrl(c *td.Client, m *td.Message, updater *td.Message, trackInfo utils.PlatformTracks, chatId int64, isVideo bool, force bool) error {
 	if len(trackInfo.Results) == 1 {
 		track := trackInfo.Results[0]
 		if _track := cache.ChatCache.GetTrackIfExists(chatId, track.Id); _track != nil {
 			_, err := updater.EditText(c, "Track already in queue or playing.", nil)
 			return err
 		}
-		return handleSingleTrack(c, m, updater, track, "", chatId, isVideo)
+		return handleSingleTrack(c, m, updater, track, "", chatId, isVideo, force)
 	}
 
-	return handleMultipleTracks(c, m, updater, trackInfo.Results, chatId, isVideo)
+	return handleMultipleTracks(c, m, updater, trackInfo.Results, chatId, isVideo, force)
 }
 
 // handleSingleTrack handles a single track.
-func handleSingleTrack(c *td.Client, m *td.Message, updater *td.Message, song utils.MusicTrack, filePath string, chatId int64, isVideo bool) error {
+func handleSingleTrack(c *td.Client, m *td.Message, updater *td.Message, song utils.MusicTrack, filePath string, chatId int64, isVideo bool, force bool) error {
 	if song.Duration > int(config.SongDurationLimit) {
 		_, err := updater.EditText(c, fmt.Sprintf("Sorry, song exceeds max duration of %d minutes.", config.SongDurationLimit/60), nil)
 		return err
@@ -284,8 +326,19 @@ func handleSingleTrack(c *td.Client, m *td.Message, updater *td.Message, song ut
 		IsVideo: isVideo, Platform: song.Platform,
 	}
 
-	qLen := cache.ChatCache.AddSong(chatId, &saveCache)
+	var qLen int
+	if force {
+		qLen = cache.ChatCache.AddSongToFront(chatId, &saveCache)
+	} else {
+		qLen = cache.ChatCache.AddSong(chatId, &saveCache)
+	}
+
 	if qLen > 1 {
+		if force {
+			_ = vc.Calls.PlayNext(c, chatId)
+			_ = c.DeleteMessages(chatId, []int64{updater.Id}, &td.DeleteMessagesOpts{Revoke: true})
+			return nil
+		}
 		escURL := html.EscapeString(saveCache.URL)
 		escName := html.EscapeString(saveCache.Name)
 		escUser := html.EscapeString(saveCache.User)
@@ -339,7 +392,7 @@ func handleSingleTrack(c *td.Client, m *td.Message, updater *td.Message, song ut
 }
 
 // handleMultipleTracks handles multiple tracks.
-func handleMultipleTracks(c *td.Client, m *td.Message, updater *td.Message, tracks []utils.MusicTrack, chatId int64, isVideo bool) error {
+func handleMultipleTracks(c *td.Client, m *td.Message, updater *td.Message, tracks []utils.MusicTrack, chatId int64, isVideo bool, force bool) error {
 	if len(tracks) == 0 {
 		_, err := updater.EditText(c, "No tracks found.", nil)
 		return err
@@ -375,8 +428,24 @@ func handleMultipleTracks(c *td.Client, m *td.Message, updater *td.Message, trac
 		return err
 	}
 
-	qLenAfter := cache.ChatCache.AddSongs(chatId, tracksToAdd)
-	startLen := qLenAfter - len(tracksToAdd)
+	var qLenAfter int
+	var startLen int
+
+	if force {
+		qLenAfter = 0
+		for i := len(tracksToAdd) - 1; i >= 0; i-- {
+			qLenAfter = cache.ChatCache.AddSongToFront(chatId, tracksToAdd[i])
+		}
+		startLen = qLenAfter - len(tracksToAdd)
+		if startLen > 0 {
+			_ = vc.Calls.PlayNext(c, chatId)
+			_ = c.DeleteMessages(chatId, []int64{updater.Id}, &td.DeleteMessagesOpts{Revoke: true})
+			return nil
+		}
+	} else {
+		qLenAfter = cache.ChatCache.AddSongs(chatId, tracksToAdd)
+		startLen = qLenAfter - len(tracksToAdd)
+	}
 
 	if startLen == 0 {
 		shouldPlayFirst = true
@@ -427,27 +496,45 @@ func handleMultipleTracks(c *td.Client, m *td.Message, updater *td.Message, trac
 	return err
 }
 
-// emptyPlayQueryText builds a friendly Rich HTML message shown when /play or
-// /vplay is used with no song name, no link, and no valid reply to latch
-// onto — replacing the old bare "<b>Usage:</b> /play [song or URL]" line
-// with something that actually explains what to do next.
+// emptyPlayQueryText builds the Rich HTML message shown when /play, /vplay,
+// /fplay, or /fvplay is used with no song name, no link, and no valid reply
+// to latch onto. It leans on a compact example table instead of a bullet
+// list so the three ways to queue a track (name, reply, link) read as one
+// glance-able reference rather than three separate lines, and it surfaces
+// the sibling commands (force-play, autoplay) so people who only knew
+// /play discover the rest.
 func emptyPlayQueryText(isVideo bool) string {
 	cmd := "/play"
 	verb := "song"
+	sibling := "/fplay"
 	if isVideo {
 		cmd = "/vplay"
 		verb = "video"
+		sibling = "/fvplay"
 	}
 
+	examples := "<table bordered striped>" +
+		"<tr><th>What you have</th><th>What to run</th></tr>" +
+		fmt.Sprintf("<tr><td align=\"left\">A %s name</td><td align=\"left\"><code>%s shape of you</code></td></tr>", verb, cmd) +
+		fmt.Sprintf("<tr><td align=\"left\">A link</td><td align=\"left\"><code>%s https://...</code></td></tr>", cmd) +
+		fmt.Sprintf("<tr><td align=\"left\">An audio/video message</td><td align=\"left\">Reply to it with <code>%s</code></td></tr>", cmd) +
+		"</table>"
+
+	seeAlso := detailsBlock("🔎 See also", fmt.Sprintf(
+		"• <code>%s [%s]</code> — same as <code>%s</code>, but cuts straight to the front of the queue (admins only)\n"+
+			"• <code>/autoplay</code> — keeps a related track playing automatically once the queue runs dry",
+		sibling, verb, cmd,
+	))
+
 	return fmt.Sprintf(
-		"%s\n\n"+
-			"You ran <code>%s</code> without a %s name, a link, or a reply to latch onto.\n\n"+
-			"<b>Try one of these:</b>\n"+
-			"• <code>%s shape of you</code>\n"+
-			"• Reply to an audio or video message with <code>%s</code>\n"+
-			"• Paste a YouTube, Spotify, JioSaavn, or Apple Music link after the command\n\n"+
+		"%s\n"+
+			"You ran <code>%s</code> without a %s name, a link, or a reply to latch onto. Here's how it works:\n\n"+
+			"%s\n\n"+
+			"%s\n\n"+
 			"<b>Supported platforms:</b> YouTube • Spotify • JioSaavn • Apple Music",
 		headingBlock(3, "🎧 What would you like to play?"),
-		cmd, verb, cmd, cmd,
+		cmd, verb,
+		examples,
+		seeAlso,
 	)
 }

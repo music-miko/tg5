@@ -48,6 +48,36 @@ func pingHandler(c *td.Client, m *td.Message) error {
 	return err
 }
 
+// privateWelcomeText builds the private-chat /start body as Rich HTML,
+// with the welcome image embedded directly via <img> instead of being sent
+// as a separate photo message. Keeping the whole screen — image included —
+// as one Rich Message means every other private-chat screen (help, setup
+// guide) is just another Rich Message, so navigating between them is
+// always a plain in-place edit; there's no photo/caption message to delete
+// and recreate along the way.
+func privateWelcomeText(name, botName string) string {
+	return fmt.Sprintf(
+		"<img src=\"%s\"/>\n"+
+			"%s\n"+
+			"Hello, %s. %s is a music bot for Telegram — stream from YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn and more, right inside any group voice chat.\n\n"+
+			"Use the buttons below to add me to a group or explore what I can do.",
+		config.StartImg,
+		headingBlock(3, fmt.Sprintf("👋 Welcome to %s", html.EscapeString(botName))),
+		html.EscapeString(name), html.EscapeString(botName),
+	)
+}
+
+// groupWelcomeText builds the group-chat /start body as Rich HTML.
+func groupWelcomeText(botName, uptime string) string {
+	return fmt.Sprintf(
+		"%s\n"+
+			"<b>Uptime:</b> <code>%s</code>\n\n"+
+			"A music player with support for YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn and more.",
+		headingBlock(3, fmt.Sprintf("👋 %s is ready", html.EscapeString(botName))),
+		uptime,
+	)
+}
+
 // startHandler handles the /start command.
 func startHandler(c *td.Client, m *td.Message) error {
 	chatID := m.ChatId
@@ -57,18 +87,8 @@ func startHandler(c *td.Client, m *td.Message) error {
 			_ = db.Instance.AddUser(chatID)
 		}(chatID)
 
-		response := fmt.Sprintf(
-			"👋 Hello, %s.\n\n%s is a music bot for Telegram — stream from YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn and more, right inside any group voice chat.\n\nUse /help to explore all commands.",
-			html.EscapeString(firstName(c, m)),
-			html.EscapeString(c.Me.FirstName),
-		)
-
-		_, err := m.ReplyPhoto(c, td.InputFileRemote{Id: config.StartImg}, &td.SendPhotoOpts{
-			ParseMode:   "HTML",
-			Caption:     response,
-			ReplyMarkup: core.PrivateStartMarkup(c.Me.Usernames.EditableUsername),
-		})
-
+		text := privateWelcomeText(firstName(c, m), c.Me.FirstName)
+		_, err := replyRich(c, m, text, core.PrivateStartMarkup(c.Me.Usernames.EditableUsername))
 		return err
 	}
 
@@ -77,53 +97,53 @@ func startHandler(c *td.Client, m *td.Message) error {
 	}(chatID)
 
 	uptime := getFormattedDuration(time.Since(startTime))
-	response := fmt.Sprintf(
-		"👋<b>%s is ready</b>\n\n<b>Uptime:</b> <code>%s</code>\n\nA music player with support for YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn and more.",
-		html.EscapeString(c.Me.FirstName),
-		uptime,
-	)
-
-	_, err := m.ReplyText(c, response, &td.SendTextMessageOpts{
-		ParseMode:             "HTML",
-		DisableWebPagePreview: true,
-		ReplyMarkup:           core.GroupWelcomeMarkup(),
-	})
-
+	text := groupWelcomeText(c.Me.FirstName, uptime)
+	_, err := replyRich(c, m, text, core.GroupWelcomeMarkup())
 	return err
 }
 
-// setupGuideText returns the step-by-step setup guide shown via the Setup Guide button.
+// setupGuideText returns the step-by-step setup guide shown via the Setup
+// Guide button.
 //
-// This uses the full Rich Message toolkit rather than a flat wall of text:
-// a compact "stepper" table gives the whole flow at a glance, the
-// admin-rights fine print is tucked into a collapsed <details> block so it
-// doesn't dominate the screen, a divider separates setup from usage, and a
-// second table doubles as a quick command reference. Each stepper row is
-// kept short on purpose — a 2-column table whose second column holds a
-// full sentence forces Telegram to squeeze or wrap it unpredictably on
-// narrow/mobile clients, which is also why the admin-rights list below
-// stays a bullet list instead of a table.
+// It leans on the full Rich Message toolkit rather than a flat wall of
+// text: a compact numbered stepper gives the whole flow at a glance, the
+// admin-rights fine print sits in a collapsed <details> block so it
+// doesn't dominate the screen on first open, a short FAQ answers the two
+// questions people actually ask ("why does it need an assistant account?",
+// "nothing plays, why?"), and a command-reference table closes things out.
 func setupGuideText(botName string) string {
 	escBotName := html.EscapeString(botName)
 
 	stepper := "<table bordered striped>" +
 		"<tr><th align=\"center\">Step</th><th>Action</th></tr>" +
 		"<tr><td align=\"center\">1️⃣</td><td>Tap <b>➕ Add to Group</b> below and pick your group</td></tr>" +
-		"<tr><td align=\"center\">2️⃣</td><td>Promote the bot to admin (tap 🔐 below for the exact rights)</td></tr>" +
-		"<tr><td align=\"center\">3️⃣</td><td>Start a voice/video chat in that group</td></tr>" +
+		"<tr><td align=\"center\">2️⃣</td><td>Promote the bot to admin — tap <b>🔐 Admin rights</b> below for the exact list</td></tr>" +
+		"<tr><td align=\"center\">3️⃣</td><td>Start a voice or video chat in that group</td></tr>" +
 		"<tr><td align=\"center\">4️⃣</td><td>Run <code>/play song name</code> and enjoy 🎶</td></tr>" +
 		"</table>"
 
-	adminRights := detailsBlock("🔐 Required admin rights", ""+
+	adminRights := detailsBlock("🔐 Admin rights", ""+
 		"• <b>Invite Users via Link</b> — lets the bot's assistant account join your group's voice chat\n"+
 		"• <b>Delete Messages</b> — lets the bot clean up its own command and status messages\n"+
 		"• <b>Ban Users</b> — lets the bot auto-recover its assistant if it's ever muted or banned by mistake",
+	)
+
+	faq := detailsBlock("❓ Common questions", ""+
+		"<b>Why does it need its own account in the voice chat?</b>\n"+
+		"Telegram bots can't join voice chats directly — a regular \"assistant\" account streams the audio on the bot's behalf. That's what the admin rights above are for.\n\n"+
+		"<b>I ran /play and nothing happened — why?</b>\n"+
+		"Make sure a voice or video chat is actually live in the group first; the bot joins it, it doesn't start one.\n\n"+
+		"<b>Can it keep playing after my queue ends?</b>\n"+
+		"Yes — turn on <code>/autoplay</code> and it'll pick related tracks automatically once the queue runs dry.",
 	)
 
 	commandTable := "<table bordered striped>" +
 		"<tr><th>Command</th><th>What it does</th></tr>" +
 		"<tr><td align=\"left\"><code>/play [song]</code></td><td align=\"left\">Streams audio in the voice chat</td></tr>" +
 		"<tr><td align=\"left\"><code>/vplay [song]</code></td><td align=\"left\">Streams video instead of audio</td></tr>" +
+		"<tr><td align=\"left\"><code>/fplay [song]</code></td><td align=\"left\">Cuts a track to the front of the queue (admins)</td></tr>" +
+		"<tr><td align=\"left\"><code>/autoplay</code></td><td align=\"left\">Keeps the music going once the queue is empty</td></tr>" +
+		"<tr><td align=\"left\"><code>/queue</code></td><td align=\"left\">Shows what's playing and what's next</td></tr>" +
 		"</table>"
 
 	return fmt.Sprintf(
@@ -133,25 +153,23 @@ func setupGuideText(botName string) string {
 			"%s\n\n"+
 			"%s\n"+
 			"%s\n\n"+
+			"%s\n\n"+
 			"<b>🎉 That's it — you're all set. Enjoy the music!</b>",
 		headingBlock(2, "🅰️ Setup Guide"),
 		escBotName,
 		stepper,
 		adminRights,
 		dividerBlock(),
+		faq,
 		commandTable,
 	)
 }
 
-// setupCallbackHandler handles the Setup Guide button and its Back navigation.
-//
-// The setup guide's admin-rights table only renders as a real table inside
-// a Rich Message, and rich blocks can't live in a media caption. In private
-// chats /start is a photo message, so opening the guide there has to delete
-// that photo and send a fresh rich text message; "Back" then has to delete
-// that rich message and recreate the original photo. In groups /start is
-// already a plain text message, so both directions can just edit it in
-// place — no delete/recreate needed.
+// setupCallbackHandler handles the Setup Guide button and its Back
+// navigation. Since /start, /help, and the setup guide are all Rich
+// Messages now (the private welcome image lives in-message via <img>
+// rather than as a separate photo), every transition here is a plain
+// in-place edit — nothing is ever deleted and resent.
 func setupCallbackHandler(c *td.Client, cb *td.UpdateNewCallbackQuery) error {
 	data := cb.DataString()
 
@@ -160,12 +178,6 @@ func setupCallbackHandler(c *td.Client, cb *td.UpdateNewCallbackQuery) error {
 		_ = cb.Answer(c, 0, false, "Opening setup guide...", "")
 		text := setupGuideText(c.Me.FirstName)
 		markup := core.GuideBackMarkup(c.Me.Usernames.EditableUsername)
-
-		if cb.IsPrivate() {
-			_, err := promoteToRich(c, cb.ChatId, cb.MessageId, text, markup)
-			return err
-		}
-
 		_, err := editRichByID(c, cb.ChatId, cb.MessageId, text, markup)
 		return err
 
@@ -178,25 +190,13 @@ func setupCallbackHandler(c *td.Client, cb *td.UpdateNewCallbackQuery) error {
 			if err == nil && user != nil {
 				name = user.FirstName
 			}
-			text := fmt.Sprintf(
-				"👋 Hello, %s.\n\n%s is a music bot for Telegram — stream from YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn and more, right inside any group voice chat.\n\nUse /help to explore all commands.",
-				html.EscapeString(name), html.EscapeString(c.Me.FirstName),
-			)
-
-			_ = c.DeleteMessages(cb.ChatId, []int64{cb.MessageId}, &td.DeleteMessagesOpts{Revoke: true})
-			_, err = c.SendPhoto(cb.ChatId, td.InputFileRemote{Id: config.StartImg}, &td.SendPhotoOpts{
-				ParseMode:   "HTML",
-				Caption:     text,
-				ReplyMarkup: core.PrivateStartMarkup(c.Me.Usernames.EditableUsername),
-			})
+			text := privateWelcomeText(name, c.Me.FirstName)
+			_, err = editRichByID(c, cb.ChatId, cb.MessageId, text, core.PrivateStartMarkup(c.Me.Usernames.EditableUsername))
 			return err
 		}
 
 		uptime := getFormattedDuration(time.Since(startTime))
-		text := fmt.Sprintf(
-			"👋<b>%s is ready</b>\n\n<b>Uptime:</b> <code>%s</code>\n\nA music player with support for YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn and more.",
-			html.EscapeString(c.Me.FirstName), uptime,
-		)
+		text := groupWelcomeText(c.Me.FirstName, uptime)
 		_, err := editRichByID(c, cb.ChatId, cb.MessageId, text, core.GroupWelcomeMarkup())
 		return err
 	}

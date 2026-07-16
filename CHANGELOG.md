@@ -1,5 +1,42 @@
 # Changelog
 
+## v1.1.0 — Autoplay, Force-Play, and Rich Navigation
+
+### New
+
+- **`/autoplay`** — toggles autoplay for the current chat via a panel with an
+  ON/OFF button. When on, the bot picks a related YouTube track once the
+  queue runs dry (backed by the same "Mix" playlist YouTube uses for its own
+  `RD...` radio mixes) instead of leaving the voice chat idle. Turns itself
+  off automatically when `/stop` / `/end` fully stops playback.
+- **`/fplay`, `/fp`** — force-play: same as `/play`, but cuts the track to
+  the front of the queue (right after whatever's currently playing) instead
+  of appending it to the end. Admin/authorized-user only.
+- **`/fvplay`, `/fvp`** — the force-play variant of `/vplay`.
+- **Queue limit raised from 10 to 25 tracks** (`MaxQueueLength` in
+  `src/handlers/play.go`), with a clearer "queue full" message that also
+  points at `/remove`.
+- **Rewrote the empty `/play` / `/vplay` / `/fplay` / `/fvplay` reply** — now
+  a Rich HTML table of "what you have → what to run" instead of a bullet
+  list, plus a collapsed "See also" pointing at the force-play and autoplay
+  commands.
+- **Rewrote the Setup Guide** — added a "Common questions" section (why the
+  bot needs an assistant account, what to check when nothing plays, how to
+  turn on autoplay) alongside the existing stepper and admin-rights blocks,
+  and the command reference table now includes `/fplay` and `/autoplay`.
+
+### Fixed
+
+- **Private `/start` no longer opens Help / Setup Guide by deleting and
+  resending a message.** The welcome screen used to be a photo message
+  (image + caption), which meant navigating to Help or the Setup Guide had
+  to delete that photo and send a fresh Rich Message, and "Back" had to
+  delete *that* and recreate the photo. The welcome image is now embedded
+  directly in the Rich Message via `<img src="...">`, so `/start` → Help →
+  a category → Setup Guide → Back is a plain in-place edit the whole way,
+  in both private chats and groups. `promoteToRich` / `demoteToPhoto` and
+  the `isPhoto` branching they required have been removed as a result.
+
 ## v1.0.0 — Initial Arc Release
 
 ### Changes

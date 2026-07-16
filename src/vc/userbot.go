@@ -62,10 +62,19 @@ func (c *TelegramCalls) joinAssistant(bot *td.Client, chatID int64, call *Assist
 	}
 }
 
-// recoverBannedAssistant attempts to unban or unmute the assistant using bot admin rights.
+// recoverBannedAssistant attempts to unban or unmute the assistant using bot
+// admin rights, then rejoins immediately — no manual /reload needed.
+//
+// This runs on the "assistant can't join" path itself, so the bot's admin
+// cache is force-reloaded rather than read from whatever was cached before
+// (forceReload=true). Without that, the common recovery sequence — someone
+// unbans/unrestricts the assistant and (re-)promotes the bot in the same
+// breath, then immediately retries /play — would still see the bot's old,
+// possibly-stale cached rights and refuse to act, forcing a manual /reload
+// before the retry could work.
 func (c *TelegramCalls) recoverBannedAssistant(bot *td.Client, chatID int64, call *Assistant, index int, isBanned bool) error {
 	ubID := call.App.Me().ID
-	botStatus, err := cache.GetUserAdmin(bot, chatID, bot.Me.Id, false)
+	botStatus, err := cache.GetUserAdmin(bot, chatID, bot.Me.Id, true)
 	if err != nil {
 		if strings.Contains(err.Error(), "is not an admin in chat") {
 			return fmt.Errorf(
@@ -78,27 +87,39 @@ func (c *TelegramCalls) recoverBannedAssistant(bot *td.Client, chatID int64, cal
 
 	admin, ok := botStatus.Status.(*td.ChatMemberStatusAdministrator)
 	if !ok || admin.Rights == nil || !admin.Rights.CanRestrictMembers {
+		verb := "unban"
+		if !isBanned {
+			verb = "unrestrict"
+		}
 		return fmt.Errorf(
-			"client%d is banned in your group (<code>%d</code>) & bot lacks CanRestrictMembers to unban my assistant",
-			index, ubID,
+			"client%d is %s in your group (<code>%d</code>) & bot lacks CanRestrictMembers to %s my assistant",
+			index, map[bool]string{true: "banned", false: "restricted"}[isBanned], ubID, verb,
 		)
 	}
 
-	if isBanned {
-		if err := bot.SetChatMemberStatus(
-			chatID,
-			td.MessageSenderUser{UserId: ubID},
-			&td.ChatMemberStatusMember{},
-		); err != nil {
-			logger.Warn("failed to unban assistant", "ub_id", ubID, "error", err, "index", index)
+	// Setting the assistant's status back to a plain Member clears both a
+	// ban and a restriction in one call — Telegram treats "restricted with
+	// every permission granted" and "banned" as the same status object
+	// family, and dropping straight to Member sidesteps having to rebuild
+	// a ChatPermissions struct that matches the group's own defaults.
+	if err := bot.SetChatMemberStatus(
+		chatID,
+		td.MessageSenderUser{UserId: ubID},
+		&td.ChatMemberStatusMember{},
+	); err != nil {
+		verb := "unban"
+		if !isBanned {
+			verb = "unrestrict"
 		}
-
-		return c.joinUb(bot, chatID, call, index)
+		logger.Warn(fmt.Sprintf("failed to %s assistant", verb), "ub_id", ubID, "error", err, "index", index)
+		return fmt.Errorf("client%d: failed to %s my assistant (<code>%d</code>): %w", index, verb, ubID, err)
 	}
 
-	// isMuted: restricted but not banned — nothing actionable right now.
-	// TODO: call SetChatMemberStatus to lift restrictions.
-	return nil
+	logger.Info("assistant recovered, rejoining",
+		"chat_id", chatID, "ub_id", ubID, "was_banned", isBanned, "index", index)
+
+	c.UpdateMembership(chatID, ubID, &td.ChatMemberStatusMember{})
+	return c.joinUb(bot, chatID, call, index)
 }
 
 // clientIndexFor returns the 0-based index for the given call, or -1 if not found.

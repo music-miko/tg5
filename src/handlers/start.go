@@ -60,10 +60,10 @@ func privateWelcomeText(name, botName string) string {
 	escBotName := html.EscapeString(botName)
 
 	return fmt.Sprintf(
-		"<img src=\"%s\"/>\n"+
-			"%s\n"+
-			"<p><b>%s</b> streams high-quality audio and video straight into your group's voice chat — from YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn, and more.</p>\n\n"+
-			"<p><b>Supported platforms:</b> YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn and more.</p>\n\n"+
+		"<img src=\"%s\"/>"+
+			"%s"+
+			"<p><b>%s</b> streams high-quality audio and video straight into your group's voice chat — from YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn, and more.</p>\n"+
+			"<p><b>Supported platforms:</b> YouTube, Spotify, Apple Music, SoundCloud, Deezer, JioSaavn and more.</p>\n"+
 			"<p>Use the buttons below to add %s to your group, or explore everything it can do.</p>",
 		config.StartImg,
 		headingBlock(3, fmt.Sprintf("Welcome, %s! 👋", escName)),
@@ -76,8 +76,8 @@ func groupWelcomeText(botName, uptime string) string {
 	escBotName := html.EscapeString(botName)
 
 	return fmt.Sprintf(
-		"%s\n"+
-			"<p><b>Uptime:</b> <code>%s</code></p>\n\n"+
+		"%s"+
+			"<p><b>Uptime:</b> <code>%s</code></p>\n"+
 			"<p><i>A feature-rich music bot for your group's voice chats — play, queue, and keep the music going with autoplay.</i></p>",
 		headingBlock(3, fmt.Sprintf("%s is ready! 🎶", escBotName)),
 		uptime,
@@ -108,15 +108,7 @@ func startHandler(c *td.Client, m *td.Message) error {
 	return err
 }
 
-// setupGuideText returns the step-by-step setup guide shown via the Setup
-// Guide button.
-//
-// It leans on the full Rich Message toolkit rather than a flat wall of
-// text: a compact numbered stepper gives the whole flow at a glance, the
-// admin-rights fine print sits in a collapsed <details> block so it
-// doesn't dominate the screen on first open, a short FAQ answers the two
-// questions people actually ask ("why does it need an assistant account?",
-// "nothing plays, why?"), and a command-reference table closes things out.
+
 func setupGuideText(botName string) string {
 	escBotName := html.EscapeString(botName)
 
@@ -155,8 +147,8 @@ func setupGuideText(botName string) string {
 	return fmt.Sprintf(
 		"%s\n"+
 			"<i>Get %s streaming in your group in under a minute.</i>\n\n"+
-			"%s\n\n"+
-			"%s\n\n"+
+			"%s\n"+
+			"%s\n"+
 			"%s\n"+
 			"%s\n\n"+
 			"%s\n\n"+

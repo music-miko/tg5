@@ -30,7 +30,6 @@ import (
 // Here that single reply mirrors the private /start card (StartImg photo +
 // primary Add-to-Group button) but personalizes it with whoever summoned
 // the bot, so it reads "<Bot> for <Name>" — the same "guest card" pattern
-// used by bots like @FallenMusicBot.
 func guestQueryHandler(c *td.Client, u *td.UpdateNewGuestQuery) error {
 	if u.Message == nil {
 		return nil

@@ -58,7 +58,7 @@ func main() {
 	slog.SetDefault(logger)
 	tdDir := "database"
 	_ = os.Remove(tdDir)
-	libPath := "./libtdjson.so.1.8.65"
+	libPath := "./libtdjson.so.1.8.66"
 
 	manager := gotdbot.NewClientManager(libPath)
 

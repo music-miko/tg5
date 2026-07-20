@@ -13,14 +13,14 @@ import (
 	"ashokshau/tgmusic/src"
 	"ashokshau/tgmusic/src/core/dl"
 	"ashokshau/tgmusic/src/handlers"
+	"ashokshau/tgmusic/src/vc"
 	"fmt"
 	"log/slog"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"path/filepath"
-
-	"ashokshau/tgmusic/src/vc"
+	"time"
 
 	"github.com/AshokShau/gotdbot"
 )
@@ -56,15 +56,16 @@ func main() {
 	)
 
 	slog.SetDefault(logger)
-	slog.Info("Starting TgMusicBot", "version", config.Version)
 	tdDir := "database"
 	_ = os.Remove(tdDir)
 	libPath := "./libtdjson.so.1.8.65"
+
 	manager := gotdbot.NewClientManager(libPath)
 
 	clientConfig := gotdbot.DefaultClientConfig()
 	clientConfig.AutoRetry = &gotdbot.AutoRetry{
 		ChatNotFound: true,
+		MaxFloodWait: 5 * time.Second,
 	}
 
 	clientConfig.DatabaseDirectory = tdDir
@@ -98,7 +99,7 @@ func main() {
 	}
 
 	handlers.LoadModules(client)
-	_, _ = client.SendTextMessage(config.LoggerId, fmt.Sprintf("The bot has started! (v%s)", config.Version), nil)
+	_, _ = client.SendTextMessage(config.LoggerId, "The bot has started!", nil)
 	manager.Idle()
 	client.Logger.Info("The bot is shutting down...")
 	vc.Calls.StopAllClients()

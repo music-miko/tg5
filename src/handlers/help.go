@@ -118,6 +118,10 @@ func getHelpCategories() map[string]struct {
 					[2]string{"/clearass", "Disconnects and clears every assistant's chat assignments."},
 					[2]string{"/leaveAll", "Makes every assistant leave every chat it's currently in."},
 					[2]string{"/logger", "Shows or toggles the bot's playback logging."},
+				)) + "\n" +
+				detailsBlock("Backups", cmdTable(
+					[2]string{"/backup", "Takes an on-demand full database backup and sends it as a .zip here."},
+					[2]string{"/restore", "Reply to a backup .zip with this to restore the database from it. A daily automatic backup is also sent to the configured backup chat."},
 				)),
 			Markup: core.BackHelpMenuKeyboard(),
 		},

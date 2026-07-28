@@ -99,6 +99,7 @@ func main() {
 	}
 
 	handlers.LoadModules(client)
+	handlers.StartDailyBackups(client)
 	_, _ = client.SendTextMessage(config.LoggerId, "The bot has started!", nil)
 	manager.Idle()
 	client.Logger.Info("The bot is shutting down...")

@@ -81,6 +81,8 @@ func LoadModules(c *gotdbot.Client) {
 	c.OnCommand("yt", ytStatsHandler)
 	c.OnCommand("gs", groupStatsHandler)
 	c.OnCommand("groupstats", groupStatsHandler)
+	c.OnCommand("backup", backupHandler)
+	c.OnCommand("restore", restoreHandler)
 
 	c.OnUpdateNewCallbackQuery(helpCallbackHandler, callbackquery.Prefix("help_"))
 	c.OnUpdateNewCallbackQuery(playCallbackHandler, callbackquery.Prefix("play_"))

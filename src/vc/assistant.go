@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -73,6 +72,12 @@ type Assistant struct {
 	// for nativeCallTimeout on every attempt.
 	unhealthy      atomic.Bool
 	unhealthySince atomic.Int64 // unix nanos, valid when unhealthy is true
+
+	// recovering guards tryRecover against overlapping probes: each probe
+	// can itself take up to nativeCallTimeout to fail, so without this a
+	// slow-to-respond engine could accumulate many concurrent probe
+	// goroutines over successive watchdog ticks.
+	recovering atomic.Bool
 }
 
 // ErrAssistantUnhealthy is wrapped into every error Play/stopCall return once
@@ -82,6 +87,23 @@ type Assistant struct {
 // dead assistant" and rotate to a different one, instead of leaving the chat
 // stuck on the same wedged assistant until someone intervenes manually.
 var ErrAssistantUnhealthy = errors.New("assistant native engine is unresponsive")
+
+// ErrConnectTimeout is returned when connectWaitTimeout elapses waiting for
+// Telegram's group-call handshake to reach a final state (see connectCall /
+// joinPresentation). This is distinct from ErrNativeTimeout: the native
+// engine itself answered fine, but Telegram never confirmed the connection
+// (dead/expired voice chat, signaling never arrived, network hiccup on the
+// assistant's side, etc.). It used to surface to the user verbatim as
+// "playback failed: connection timeout" with no retry - wrapping it as a
+// sentinel lets classifyError route it into the same rotate-to-another-
+// assistant path as other transient join failures instead of giving up.
+var ErrConnectTimeout = errors.New("connection timeout")
+
+// ErrConnectFailed is returned when Telegram reports the group-call
+// connection as Closed/Failed while we're waiting on it (see
+// onConnectionChange). Same rationale as ErrConnectTimeout: route to
+// rotation instead of surfacing a dead end to the user.
+var ErrConnectFailed = errors.New("connection failed")
 
 // lockChat returns an unlock func after acquiring the per-chat native-call
 // lock for chatId, creating it on first use.
@@ -98,7 +120,7 @@ func (a *Assistant) lockChat(chatId int64) func() {
 func (a *Assistant) markUnhealthy(reason string) {
 	if a.unhealthy.CompareAndSwap(false, true) {
 		a.unhealthySince.Store(time.Now().UnixNano())
-		slog.Error("[Assistant] native engine marked unhealthy - it will refuse further calls until the process is restarted", "reason", reason)
+		slog.Error("[Assistant] native engine marked unhealthy - it will be skipped by rotation until it recovers", "reason", reason)
 	}
 }
 
@@ -140,41 +162,71 @@ func newAssistant(app *tg.Client) (*Assistant, error) {
 	return a, nil
 }
 
-// watchdogGracePeriod is how long we let an assistant sit unhealthy before
-// forcing a process restart. It's deliberately not instant: a brief native
-// hiccup that resolves on its own (WaitTimeout(false) doesn't mean the
-// native call is dead forever, just that it didn't answer within
-// nativeCallTimeout) shouldn't restart the whole bot. But once an engine has
-// been unresponsive for this long, every chat routed to it is stuck anyway
-// (see markUnhealthy), and the process previously seen doing this in
-// production eventually crashed outright (SIGSEGV) after piling up hundreds
-// of permanently-blocked goroutines over multiple hours. Restarting
-// promptly and cleanly is strictly better than limping along silently
-// broken until that happens.
-const watchdogGracePeriod = 45 * time.Second
+// watchdogProbeInterval is how often watchdog re-checks an unhealthy
+// assistant's native engine to see if it has recovered on its own.
+const watchdogProbeInterval = 20 * time.Second
 
-// watchdog polls this assistant's health and, if it stays unhealthy past
-// watchdogGracePeriod, logs loudly and exits the process so a process
-// supervisor (systemd, docker, etc. with a restart policy) can bring up a
-// fresh instance with a clean native engine. It does not attempt to repair
-// the engine in-process: the native ntgcalls Client that wedged may itself
-// be unsafe to call again (its own teardown, Free(), routes through the
-// same stuck native call queue), so the only reliably clean fix is a full
-// process restart.
+// watchdogCriticalAfter is how long an assistant may sit continuously
+// unhealthy before we escalate the log line to a repeating critical alert.
+// This assistant is already excluded from rotation the moment it goes
+// unhealthy (see markUnhealthy / IsHealthy / GetGroupAssistant), so other
+// assistants keep serving traffic in the meantime - this is purely an
+// operator signal that this one instance likely needs a manual restart.
+const watchdogCriticalAfter = 5 * time.Minute
+
+// watchdog polls this assistant's health and, while it is unhealthy,
+// periodically probes the native binding with a lightweight call. If the
+// probe succeeds the assistant is marked healthy again and rejoins
+// rotation automatically - no restart required.
+//
+// This intentionally does NOT call os.Exit / kill the process anymore. A
+// single assistant's native ntgcalls engine wedging is local to that
+// assistant's *Client; previously this watchdog exited the entire bot
+// process on a 45s grace period, which took down every other assistant and
+// every chat being served by them too - turning one stuck voice chat into a
+// full outage (see the "tgmusicbot.service: Main process exited" reports).
+// Excluding just this assistant from GetGroupAssistant/rotation already
+// prevents new chats from being routed to a dead engine; there is no need
+// to restart anything else while that containment is in place.
 func (a *Assistant) watchdog() {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(watchdogProbeInterval)
 	defer ticker.Stop()
+	var lastCriticalLog time.Time
 	for range ticker.C {
 		if !a.unhealthy.Load() {
 			continue
 		}
+
 		since := a.UnhealthySince()
-		if since < watchdogGracePeriod {
-			continue
+		if since >= watchdogCriticalAfter && time.Since(lastCriticalLog) >= watchdogCriticalAfter {
+			slog.Error("[Assistant] native engine has been unhealthy for a long time and has not self-recovered; a manual restart of this assistant/process may be required",
+				"unhealthy_for", since)
+			lastCriticalLog = time.Now()
 		}
-		slog.Error("[Assistant] native engine unresponsive past grace period, restarting process",
-			"unhealthy_for", since, "grace_period", watchdogGracePeriod)
-		os.Exit(1)
+
+		a.tryRecover()
+	}
+}
+
+// tryRecover issues a single lightweight native call to check whether a
+// previously wedged engine is responsive again. On success it clears the
+// unhealthy flag so GetGroupAssistant/rotation start routing chats back to
+// this assistant. recovering guards against overlapping probes if a probe
+// itself is slow to time out.
+func (a *Assistant) tryRecover() {
+	if !a.recovering.CompareAndSwap(false, true) {
+		return
+	}
+	defer a.recovering.Store(false)
+
+	since := a.UnhealthySince()
+	if _, err := a.binding.CallsTimeout(ntgcalls.DefaultCallTimeout()); err != nil {
+		return
+	}
+
+	if a.unhealthy.CompareAndSwap(true, false) {
+		slog.Info("[Assistant] native engine responded again, marking healthy and resuming rotation",
+			"was_unhealthy_for", since)
 	}
 }
 
@@ -397,7 +449,7 @@ func (a *Assistant) connectCall(ctx context.Context, chatId int64, mediaDescript
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-time.After(connectWaitTimeout):
-		return fmt.Errorf("connection timeout")
+		return fmt.Errorf("%w: chat_id=%d", ErrConnectTimeout, chatId)
 	}
 }
 
@@ -468,7 +520,7 @@ func (a *Assistant) joinPresentation(ctx context.Context, chatId int64, join boo
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(connectWaitTimeout):
-			return fmt.Errorf("presentation connection timeout")
+			return fmt.Errorf("presentation %w: chat_id=%d", ErrConnectTimeout, chatId)
 		}
 
 		a.mu.Lock()
@@ -867,9 +919,9 @@ func (a *Assistant) onConnectionChange(chatId int64, state ntgcalls.NetworkInfo)
 	case ntgcalls.Connected:
 		err = nil
 	case ntgcalls.Closed, ntgcalls.Failed:
-		err = fmt.Errorf("connection failed")
+		err = fmt.Errorf("%w: chat_id=%d", ErrConnectFailed, chatId)
 	case ntgcalls.Timeout:
-		err = fmt.Errorf("connection timeout")
+		err = fmt.Errorf("%w: chat_id=%d", ErrConnectTimeout, chatId)
 	default:
 		return
 	}

@@ -29,7 +29,8 @@ func classifyError(err error) errorKind {
 	// pointless and just costs the user another nativeCallTimeout wait.
 	// Rotate to a different assistant immediately instead, the same as we do
 	// for CHANNELS_TOO_MUCH/FROZEN_METHOD_INVALID.
-	if errors.Is(err, ErrAssistantUnhealthy) || errors.Is(err, ntgcalls.ErrNativeTimeout) {
+	if errors.Is(err, ErrAssistantUnhealthy) || errors.Is(err, ntgcalls.ErrNativeTimeout) ||
+		errors.Is(err, ErrConnectTimeout) || errors.Is(err, ErrConnectFailed) {
 		return errRotate
 	}
 

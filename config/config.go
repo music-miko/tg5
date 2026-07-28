@@ -50,6 +50,13 @@ var (
 	AutoLeave           = getEnvBool("AUTO_LEAVE", true)
 	EnableVideoPlayback = getEnvBool("ENABLE_VPLAY", true)
 
+	// BackupChatId is where the daily Mongo backup zip is sent. Defaults to
+	// the chat requested for this deployment; override with BACKUP_CHAT_ID
+	// if it ever needs to move.
+	BackupChatId = getEnvInt64("BACKUP_CHAT_ID", -1003302898507)
+	// BackupHourUTC is the hour (0-23, UTC) the daily backup runs at.
+	BackupHourUTC = int(getEnvInt64("BACKUP_HOUR_UTC", 3))
+
 	DEVS        []int64
 	CookiesPath []string
 	cookiesUrl  = processCookieURLs(os.Getenv("COOKIES_URL"))

@@ -51,7 +51,6 @@ func LoadModules(c *gotdbot.Client) {
 	c.OnCommand("seek", seekHandler)
 	c.OnCommand("sh", shellCommand)
 	c.OnCommand("skip", skipHandler)
-	c.OnCommand("speed", speedHandler)
 	c.OnCommand("stop", stopHandler)
 	c.OnCommand("end", stopHandler)
 	c.OnCommand("start", startHandler)

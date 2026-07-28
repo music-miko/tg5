@@ -68,7 +68,6 @@ func getHelpCategories() map[string]struct {
 					[2]string{"/pause", "Pauses playback without clearing the queue."},
 					[2]string{"/resume", "Resumes playback after a pause."},
 					[2]string{"/seek [seconds]", "Jumps to a specific position in the current track."},
-					[2]string{"/speed [0.5-4.0]", "Changes the playback speed of the current track."},
 					[2]string{"/mute", "Mutes the bot's audio in the voice chat without stopping playback."},
 					[2]string{"/unmute", "Unmutes the bot's audio after /mute."},
 				)) + "\n" +

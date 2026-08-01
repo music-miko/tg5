@@ -137,6 +137,8 @@ Deploying with Docker is the easiest and recommended method.
 
 3.  **Generate necessary files:**
     ```sh
+    #If version is 1.23 issue
+    sed -i 's/go 1.25.0/go 1.23/' go.mod
     go run setup_ntgcalls.go
     ```
 
